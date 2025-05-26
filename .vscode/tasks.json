@@ -1,0 +1,99 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "C/C++: 编译当前文件",
+            "type": "shell",
+            "command": "/usr/bin/sh",  // 使用 shell 解释器执行多步命令
+            "args": [
+                "-c",
+                "if [[ ${fileBasename} == *.cpp ]]; then compiler='g++'; else compiler='gcc'; fi; ${compiler} -g -pthread \"${file}\" -o \"${fileDirname}/${fileBasenameNoExtension}\" && chmod +x \"${fileDirname}/${fileBasenameNoExtension}\""
+            ],
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "detail": "编译当前打开的 C/C++ 文件"
+        },
+        {
+            "label": "Build Multi-File Project",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-g",
+                "-Wall",
+                "-I",
+                "${workspaceFolder}",
+                "${workspaceFolder}/*.c",
+                "-o",
+                "${workspaceFolder}/${fileBasenameNoExtension}",
+                "-pthread",  // 添加此行
+                "ldl",
+                "-luring"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "编译所有C文件（自动处理C++）",
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": [
+                        "-c"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "cppbuild",
+            "label": "C/C++: gcc-13 生成活动文件",
+            "command": "/usr/bin/gcc-13",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}",
+                "-pthread",
+                "-ldl",
+                "-luring"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "detail": "调试器生成的任务。"
+        },
+        {
+            "type": "cppbuild",
+            "label": "C/C++: gcc 生成活动文件",
+            "command": "/usr/bin/gcc",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}",
+                "-pthread",
+                "-ldl",
+                "-luring"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "调试器生成的任务。"
+        }
+    ]
+}
