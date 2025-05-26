@@ -6,12 +6,12 @@ import socket
 def main():
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    server_address = ('192.168.243.131', 2000)  
+    server_address = ('192.168.127.141', 8000)  
 
     try:
         client_socket.connect(server_address)
 
-        message = "GET Teacher"
+        message = "GET Student"
         client_socket.sendall(message.encode())
 
         response = client_socket.recv(1024)

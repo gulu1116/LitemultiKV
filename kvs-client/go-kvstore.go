@@ -10,14 +10,14 @@ import (
 )
 
 func main() {
-	conn, err := net.Dial("tcp", "192.168.243.131:2000")
+	conn, err := net.Dial("tcp", "192.168.127.141:8000")
 	if err != nil {
 		fmt.Println("connect failed: ", err)
 		os.Exit(1)
 	}
 	defer conn.Close()
 
-	message := "SET Teacher King"
+	message := "SET Student GuLu"
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("send failed: ", err)
