@@ -23,7 +23,7 @@ int kvs_array_create(kvs_array_t *inst) {
     return 0;
 }
 
-void kvs_array_destory(kvs_array_t *inst) {
+void kvs_array_destroy(kvs_array_t *inst) {
 
     if (!inst) return;
 
@@ -113,7 +113,7 @@ int kvs_array_del(kvs_array_t *inst, char *key) {
     int i = 0;
     for (i = 0; i < inst->total; i++) {
 
-        if (strcmp(inst->table[i].key, key) == 0) {
+        if (inst->table[i].key && strcmp(inst->table[i].key, key) == 0) {
 
             kvs_free(inst->table[i].key);
             inst->table[i].key = NULL;

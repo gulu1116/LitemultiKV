@@ -14,6 +14,9 @@ extern kvs_rbtree_t global_rbtree;
 extern kvs_hash_t global_hash;
 #endif
 
+#if ENABLE_SKIP	
+extern kvs_skip_t global_skip;
+#endif
 
 void *kvs_malloc(size_t size) {
      return malloc(size);
@@ -28,7 +31,8 @@ const char *command[] = {
 
     "SET", "GET", "DEL", "MOD", "EXIST", 
 	"RSET", "RGET", "RDEL", "RMOD", "REXIST",
-	"HSET", "HGET", "HDEL", "HMOD", "HEXIST"
+	"HSET", "HGET", "HDEL", "HMOD", "HEXIST",
+	"SSET", "SGET", "SDEL", "SMOD", "SEXIST", 
 };
 
 enum {
@@ -51,6 +55,12 @@ enum {
     KVS_CMD_HDEL,
     KVS_CMD_HMOD,
     KVS_CMD_HEXIST,
+	//skiptable
+	KVS_CMD_SSET,
+    KVS_CMD_SGET,
+    KVS_CMD_SDEL,
+    KVS_CMD_SMOD,
+    KVS_CMD_SEXIST,
 
     KVS_CMD_COUNT,
 };
@@ -110,9 +120,9 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "OK\r\n");
 		} else {
 			length = sprintf(response, "EXIST\r\n");
-		} 
-		
+		}
 		break;
+
 	case KVS_CMD_GET: {
 		char *result = kvs_array_get(&global_array, key);
 		if (result == NULL) {
@@ -132,6 +142,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "NO EXIST\r\n");
 		}
 		break;
+
 	case KVS_CMD_MOD:
 		ret = kvs_array_mod(&global_array ,key, value);
 		if (ret < 0) {
@@ -142,6 +153,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "NO EXIST\r\n");
 		}
 		break;
+
 	case KVS_CMD_EXIST:
 		ret = kvs_array_exist(&global_array ,key);
 		if (ret == 0) {
@@ -183,6 +195,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "NO EXIST\r\n");
 		}
 		break;
+
 	case KVS_CMD_RMOD:
 		ret = kvs_rbtree_mod(&global_rbtree ,key, value);
 		if (ret < 0) {
@@ -193,6 +206,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "NO EXIST\r\n");
 		}
 		break;
+
 	case KVS_CMD_REXIST:
 		ret = kvs_rbtree_exist(&global_rbtree ,key);
 		if (ret == 0) {
@@ -204,7 +218,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 #endif
 
 #if ENABLE_HASH
-		case KVS_CMD_HSET:
+	case KVS_CMD_HSET:
 		ret = kvs_hash_set(&global_hash ,key, value);
 		if (ret < 0) {
 			length = sprintf(response, "ERROR\r\n");
@@ -213,8 +227,8 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 		} else {
 			length = sprintf(response, "EXIST\r\n");
 		} 
-		
 		break;
+
 	case KVS_CMD_HGET: {
 		char *result = kvs_hash_get(&global_hash, key);
 		if (result == NULL) {
@@ -234,6 +248,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "NO EXIST\r\n");
 		}
 		break;
+
 	case KVS_CMD_HMOD:
 		ret = kvs_hash_mod(&global_hash ,key, value);
 		if (ret < 0) {
@@ -244,6 +259,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 			length = sprintf(response, "NO EXIST\r\n");
 		}
 		break;
+
 	case KVS_CMD_HEXIST:
 		ret = kvs_hash_exist(&global_hash, key);
 		if (ret == 0) {
@@ -254,10 +270,60 @@ int kvs_filter_protocol(char **tokens, int count, char *response) {
 		break;
 #endif
 
-#if ENABLE_HASH
+#if ENABLE_SKIP
+	case KVS_CMD_SSET:
+		ret = kvs_skip_set(&global_skip, key, value);
+		if (ret < 0) {
+			length = sprintf(response, "ERROR\r\n");
+		} else if (ret == 0) {
+			length = sprintf(response, "OK\r\n");
+		} else {
+			length = sprintf(response, "EXIST\r\n");
+		}
+		break;
 
+	case KVS_CMD_SGET: {
+		char *result = kvs_skip_get(&global_skip, key);
+		if (result == NULL) {
+			length = sprintf(response, "NO EXIST\r\n");
+		} else {
+			length = sprintf(response, "%s\r\n", result);
+		}
+		break;
+	}
 
+	case KVS_CMD_SDEL:
+		ret = kvs_skip_del(&global_skip, key);
+		if (ret < 0) {
+			length = sprintf(response, "ERROR\r\n");
+		} else if (ret == 0) {
+			length = sprintf(response, "OK\r\n");
+		} else {
+			length = sprintf(response, "NO EXIST\r\n");
+		}
+		break;
+
+	case KVS_CMD_SMOD:
+		ret = kvs_skip_mod(&global_skip, key, value);
+		if (ret < 0) {
+			length = sprintf(response, "ERROR\r\n");
+		} else if (ret == 0) {
+			length = sprintf(response, "OK\r\n");
+		} else {
+			length = sprintf(response, "NO EXIST\r\n");
+		}
+		break;
+
+	case KVS_CMD_SEXIST:
+		ret = kvs_skip_exist(&global_skip, key);
+		if (ret == 0) {
+			length = sprintf(response, "EXIST\r\n");
+		} else {
+			length = sprintf(response, "NO EXIST\r\n");
+		}
+		break;
 #endif
+
 
 	default:
 		assert(0);
@@ -312,6 +378,11 @@ int init_kvengine(void) {
 	kvs_hash_create(&global_hash);
 #endif
 
+#if ENABLE_SKIP
+	memset(&global_skip, 0, sizeof(kvs_skip_t));
+	kvs_skip_create(&global_skip);
+#endif
+
      return 0;
 }
 
@@ -319,15 +390,19 @@ int init_kvengine(void) {
 void dest_kvengine(void) {
 
 #if ENABLE_ARRAY
-	kvs_array_destory(&global_array);
+	kvs_array_destroy(&global_array);
 #endif
 
 #if ENABLE_RBTREE
-	kvs_rbtree_destory(&global_rbtree);
+	kvs_rbtree_destroy(&global_rbtree);
 #endif
 
 #if ENABLE_HASH
-	kvs_hash_destory(&global_hash);
+	kvs_hash_destroy(&global_hash);
+#endif
+
+#if ENABLE_SKIP
+	kvs_skip_destroy(&global_skip);
 #endif
 }
 

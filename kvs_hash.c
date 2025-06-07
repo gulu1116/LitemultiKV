@@ -39,17 +39,22 @@ hashnode_t *_create_node(char *key, char *value) {
 	hashnode_t *node = (hashnode_t*)kvs_malloc(sizeof(hashnode_t));
 	if (!node) return NULL;
 
+// 动态分配模式
 #if ENABLE_KEY_POINTER
 
-	char *kcopy = kvs_malloc(strlen(key) + 1); // 避免最后置0
-    if (kcopy == NULL) return NULL; // 内存分配失败
+	char *kcopy = kvs_malloc(strlen(key) + 1); // +1 用于 '\0' 结束符
+    if (kcopy == NULL) {
+        kvs_free(node); // 分配失败，清理已分配内存
+        return NULL;
+    }
     memset(kcopy, 0, strlen(key) + 1);
     strncpy(kcopy, key, strlen(key));
 
-	node->key = kcopy;
+	node->key = kcopy; // 指向新分配的内存
 
 	char *kvalue = kvs_malloc(strlen(value) + 1);
     if (kvalue == NULL) {
+		kvs_free(kcopy);
 		kvs_free(kvalue);
 		return NULL; // 内存分配失败
 	}
@@ -59,6 +64,7 @@ hashnode_t *_create_node(char *key, char *value) {
 	node->value = kvalue;
 
 #else
+	// 固定大小模式：直接复制到结构体数组
 	strncpy(node->key, key, MAX_KEY_LEN);
 	strncpy(node->value, value, MAX_VALUE_LEN);
 #endif
@@ -83,12 +89,12 @@ int kvs_hash_create(kvs_hash_t *hash) {
 }
 
 // 
-void kvs_hash_destory(kvs_hash_t *hash) {
+void kvs_hash_destroy(kvs_hash_t *hash) {
 
 	if (!hash) return;
 
 	int i = 0;
-	for (i = 0;i < hash->max_slots;i ++) {
+	for (i = 0; i < hash->max_slots; i ++) {
 		hashnode_t *node = hash->nodes[i];
 
 		while (node != NULL) { // error
@@ -96,13 +102,18 @@ void kvs_hash_destory(kvs_hash_t *hash) {
 			hashnode_t *tmp = node;
 			node = node->next;
 			hash->nodes[i] = node;
-			
-			kvs_free(tmp);
+
+// 动态模式：额外释放键值内存
+#if ENABLE_KEY_POINTER
+            kvs_free(tmp->key);
+            kvs_free(tmp->value);
+#endif
+			kvs_free(tmp); // 释放节点本身
 			
 		}
 	}
 
-	kvs_free(hash->nodes);
+	kvs_free(hash->nodes); // 释放桶数组
 	
 }
 
@@ -117,7 +128,7 @@ int kvs_hash_set(kvs_hash_t *hash, char *key, char *value) {
 	int idx = _hash(key, MAX_TABLE_SIZE);
 
 	hashnode_t *node = hash->nodes[idx];
-#if 1
+#if 1 // 检查键是否已存在
 	while (node != NULL) {
 		if (strcmp(node->key, key) == 0) { 
 			return 1;
@@ -177,7 +188,8 @@ int kvs_hash_mod(kvs_hash_t *hash, char *key, char *value) {
 		return 1; // no exist
 	}
 
-	// node ---> 
+// 动态模式：释放旧值，分配新值
+#if ENABLE_KEY_POINTER
 	kvs_free(node->value);
 
 	char *kvalue = kvs_malloc(strlen(value) + 1);
@@ -186,6 +198,11 @@ int kvs_hash_mod(kvs_hash_t *hash, char *key, char *value) {
 	strncpy(kvalue, value, strlen(value));
 
 	node->value = kvalue;
+
+#else
+// 固定模式：直接覆盖
+    strncpy(node->value, value, MAX_VALUE_LEN);
+#endif
 
 	return 0;
 }
@@ -201,18 +218,26 @@ int kvs_hash_del(kvs_hash_t *hash, char *key) {
 	int idx = _hash(key, MAX_TABLE_SIZE);
 
 	hashnode_t *head = hash->nodes[idx];
-	if (head == NULL) return -1; // noexist
-	// head node
+	if (head == NULL) return 1; // no exist
+
+	// delete head node
 	if (strcmp(head->key, key) == 0) {
 		hashnode_t *tmp = head->next;
 		hash->nodes[idx] = tmp;
 		
+// 释放资源
+#if ENABLE_KEY_POINTER
+        kvs_free(head->key);
+        kvs_free(head->value);
+#endif
+
 		kvs_free(head);
 		hash->count --;
 		
 		return 0;
 	}
 
+	// delete middle/rear node
 	hashnode_t *cur = head;
 	while (cur->next != NULL) {
 		if (strcmp(cur->next->key, key) == 0) break; // search node
@@ -222,7 +247,7 @@ int kvs_hash_del(kvs_hash_t *hash, char *key) {
 
 	if (cur->next == NULL) {
 		
-		return -1;
+		return 1;
 	}
 
 	hashnode_t *tmp = cur->next;

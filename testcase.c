@@ -39,9 +39,9 @@ void testcase(int connfd, char *msg, char *pattern, char *casename) {
     recv_msg(connfd, result, MAX_MSG_LENGTH);
 
     if (strcmp(result, pattern) == 0) {
-        printf("testcase %s passed\n", casename);
+        //  printf("testcase %s passed\n", casename);
     } else {
-        printf("testcase %s failed, expected: %s, got: %s\n", casename, pattern, result);
+        // printf("testcase %s failed, expected: %s, got: %s\n", casename, pattern, result);
         exit(1);
     }
 
@@ -81,7 +81,6 @@ void array_testcase(int connfd) {
     testcase(connfd, "MOD Student Lian", "NO EXIST\r\n", "MOD-Student-Lian");
     testcase(connfd, "EXIST Student", "NO EXIST\r\n", "EXIST-Student");
 
-
 }
 
 void array_testcase_1w(int connfd) {
@@ -110,9 +109,92 @@ void array_testcase_1w(int connfd) {
 
 	int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
 
-	printf("array testcase --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+	printf("array testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 
 }
+
+void array_testcase_1w_0(int connfd) {
+    int count = 10000;
+    int i = 0;
+
+    struct timeval tv_begin;
+    gettimeofday(&tv_begin, NULL);
+
+    // 插入阶段
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "SET Student%d GuLu%d", i, i);
+        testcase(connfd, cmd, "OK\r\n", "SET-Student-GuLu");
+    }
+
+    // 查询阶段
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "GET Student%d", i);
+        char result[128] = {0};
+        snprintf(result, sizeof(result), "GuLu%d\r\n", i);
+        testcase(connfd, cmd, result, "GET-Student");
+    }
+
+    // 修改阶段
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "MOD Student%d Lighting%d", i, i);
+        testcase(connfd, cmd, "OK\r\n", "MOD-Student-Lighting");
+    }
+
+    // 再次查询阶段
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "GET Student%d", i);
+        char result[128] = {0};
+        snprintf(result, sizeof(result), "Lighting%d\r\n", i);
+        testcase(connfd, cmd, result, "GET-Student");
+    }
+
+    // 存在性检查阶段
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "EXIST Student%d", i);
+        testcase(connfd, cmd, "EXIST\r\n", "EXIST-Student");
+    }
+
+    // 删除阶段
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "DEL Student%d", i);
+        testcase(connfd, cmd, "OK\r\n", "DEL-Student");
+    }
+
+    // 查询删除后的数据
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "GET Student%d", i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "GET-Student");
+    }
+
+    // 修改不存在的数据
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "MOD Student%d Lian%d", i, i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "MOD-Student");
+    }
+
+    // 最终存在性检查（确认已删除）
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, sizeof(cmd), "EXIST Student%d", i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "EXIST-Student");
+    }
+
+    struct timeval tv_end;
+    gettimeofday(&tv_end, NULL);
+
+    int time_used = TIME_SUB_MS(tv_end, tv_begin);
+    printf("array testcase_1w_0 --> time_used: %d ms, qps: %d\n",
+           time_used, 90000 * 1000 / time_used);
+}
+
 
 void rbtree_testcase(int connfd) {
 
@@ -154,7 +236,7 @@ void rbtree_testcase_1w(int connfd) {
 
 	int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
 
-	printf("rbtree testcase --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+	printf("rbtree testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 
 }
 
@@ -242,7 +324,7 @@ void rbtree_testcase_1w_0(int connfd) {
 
 	int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
 
-	printf("rbtree testcase_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+	printf("rbtree testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 
 }
 
@@ -261,13 +343,226 @@ void hash_testcase(int connfd) {
 
 }
 
+void hash_testcase_1w(int connfd) {
+
+    int count = 10000;
+    int i = 0;
+
+    struct timeval tv_begin;
+    gettimeofday(&tv_begin, NULL);
+
+    for (i = 0; i < count; i++) {
+        testcase(connfd, "HSET Student GuLu", "OK\r\n", "HSET-Student-GuLu");
+        testcase(connfd, "HGET Student", "GuLu\r\n", "HGET-Student");
+        testcase(connfd, "HMOD Student Lighting", "OK\r\n", "HMOD-Student-Lighting");
+        testcase(connfd, "HGET Student", "Lighting\r\n", "HGET-Student");
+        testcase(connfd, "HEXIST Student", "EXIST\r\n", "HEXIST-Student");
+        testcase(connfd, "HDEL Student", "OK\r\n", "HDEL-Student");
+        testcase(connfd, "HGET Student", "NO EXIST\r\n", "HGET-Student");
+        testcase(connfd, "HMOD Student Lian", "NO EXIST\r\n", "HMOD-Student-Lian");
+        testcase(connfd, "HEXIST Student", "NO EXIST\r\n", "HEXIST-Student");
+    }
+
+    struct timeval tv_end;
+    gettimeofday(&tv_end, NULL);
+
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    printf("hash testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+}
+
+void hash_testcase_1w_0(int connfd) {
+
+    int count = 10000;
+    int i = 0;
+
+    struct timeval tv_begin;
+    gettimeofday(&tv_begin, NULL);
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HSET Student%d GuLu%d", i, i);
+        testcase(connfd, cmd, "OK\r\n", "HSET-Student-GuLu");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HGET Student%d", i);
+
+        char result[128] = {0};
+        snprintf(result, 128, "GuLu%d\r\n", i);
+        testcase(connfd, cmd, result, "HGET-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HMOD Student%d Lighting%d", i, i);
+        testcase(connfd, cmd, "OK\r\n", "HMOD-Student-Lighting");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HGET Student%d", i);
+
+        char result[128] = {0};
+        snprintf(result, 128, "Lighting%d\r\n", i);
+        testcase(connfd, cmd, result, "HGET-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HEXIST Student%d", i);
+        testcase(connfd, cmd, "EXIST\r\n", "HEXIST-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HDEL Student%d", i);
+        testcase(connfd, cmd, "OK\r\n", "HDEL-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HGET Student%d", i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "HGET-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HMOD Student%d Lian%d", i, i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "HMOD-Student-Lian");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "HEXIST Student%d", i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "HEXIST-Student");
+    }
+
+    struct timeval tv_end;
+    gettimeofday(&tv_end, NULL);
+
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    printf("hash testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+}
+
+void skiplist_testcase(int connfd) {
+    testcase(connfd, "SSET Student GuLu", "OK\r\n", "SSET-Student-GuLu");
+    testcase(connfd, "SGET Student", "GuLu\r\n", "SGET-Student");
+    testcase(connfd, "SMOD Student Lighting", "OK\r\n", "SMOD-Student-Lighting");
+    testcase(connfd, "SGET Student", "Lighting\r\n", "SGET-Student");
+    testcase(connfd, "SEXIST Student", "EXIST\r\n", "SEXIST-Student");
+    testcase(connfd, "SDEL Student", "OK\r\n", "SDEL-Student");
+    testcase(connfd, "SGET Student", "NO EXIST\r\n", "SGET-Student");
+    testcase(connfd, "SMOD Student Lian", "NO EXIST\r\n", "SMOD-Student-Lian");
+    testcase(connfd, "SEXIST Student", "NO EXIST\r\n", "SEXIST-Student");
+}
+
+void skiplist_testcase_1w(int connfd) {
+
+    int count = 10000;
+    int i = 0;
+
+    struct timeval tv_begin;
+    gettimeofday(&tv_begin, NULL);
+
+    for (i = 0; i < count; i++) {
+        testcase(connfd, "SSET Student GuLu", "OK\r\n", "SSET-Student-GuLu");
+        testcase(connfd, "SGET Student", "GuLu\r\n", "SGET-Student");
+        testcase(connfd, "SMOD Student Lighting", "OK\r\n", "SMOD-Student-Lighting");
+        testcase(connfd, "SGET Student", "Lighting\r\n", "SGET-Student");
+        testcase(connfd, "SEXIST Student", "EXIST\r\n", "SEXIST-Student");
+        testcase(connfd, "SDEL Student", "OK\r\n", "SDEL-Student");
+        testcase(connfd, "SGET Student", "NO EXIST\r\n", "SGET-Student");
+        testcase(connfd, "SMOD Student Lian", "NO EXIST\r\n", "SMOD-Student-Lian");
+        testcase(connfd, "SEXIST Student", "NO EXIST\r\n", "SEXIST-Student");
+    }
+
+    struct timeval tv_end;
+    gettimeofday(&tv_end, NULL);
+
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    printf("skiplist testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+}
+
+void skiplist_testcase_1w_0(int connfd) {
+
+    int count = 10000;
+    int i = 0;
+
+    struct timeval tv_begin;
+    gettimeofday(&tv_begin, NULL);
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SSET Student%d GuLu%d", i, i);
+        testcase(connfd, cmd, "OK\r\n", "SSET-Student-GuLu");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SGET Student%d", i);
+        char result[128] = {0};
+        snprintf(result, 128, "GuLu%d\r\n", i);
+        testcase(connfd, cmd, result, "SGET-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SMOD Student%d Lighting%d", i, i);
+        testcase(connfd, cmd, "OK\r\n", "SMOD-Student-Lighting");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SGET Student%d", i);
+        char result[128] = {0};
+        snprintf(result, 128, "Lighting%d\r\n", i);
+        testcase(connfd, cmd, result, "SGET-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SEXIST Student%d", i);
+        testcase(connfd, cmd, "EXIST\r\n", "SEXIST-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SDEL Student%d", i);
+        testcase(connfd, cmd, "OK\r\n", "SDEL-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SGET Student%d", i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "SGET-Student");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SMOD Student%d Lian%d", i, i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "SMOD-Student-Lian");
+    }
+
+    for (i = 0; i < count; i++) {
+        char cmd[128] = {0};
+        snprintf(cmd, 128, "SEXIST Student%d", i);
+        testcase(connfd, cmd, "NO EXIST\r\n", "SEXIST-Student");
+    }
+
+    struct timeval tv_end;
+    gettimeofday(&tv_end, NULL);
+
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    printf("skiplist testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
+}
 
 
 
 // testcase 192.168.127.141 8000
 int main(int argc, char *argv[]) {
 
-    if(argc != 4) {
+    if(argc != 3) {
         printf("argc error\n");
         return -1;
     }
@@ -276,7 +571,7 @@ int main(int argc, char *argv[]) {
 
     char *ip = argv[1];
     int port = atoi(argv[2]);
-    int mode = atoi(argv[3]);
+    //int mode = atoi(argv[3]);
 
     int connfd = connect_tcpserver(ip, port);
 
@@ -284,18 +579,29 @@ int main(int argc, char *argv[]) {
     // fork();
     // fork();
 
-    if (mode == 0) {
-        rbtree_testcase_1w(connfd);
-    } else if (mode == 1) {
-        rbtree_testcase_1w_0(connfd);
-    } else if (mode == 2) {
-        array_testcase_1w(connfd);
-    } else if (mode == 3) {
-        hash_testcase(connfd);
-    }
-    // rbtree_testcase_1w(connfd);
-    // rbtree_testcase_1w_0(connfd);
-    // array_testcase_1w(connfd);
+    // if (mode == 0) {
+    //     rbtree_testcase_1w(connfd);
+    // } else if (mode == 1) {
+    //     rbtree_testcase_1w_0(connfd);
+    // } else if (mode == 2) {
+    //     array_testcase_1w(connfd);
+    // } else if (mode == 3) {
+    //     hash_testcase(connfd);
+    // }
+
+
+    rbtree_testcase_1w(connfd);
+    rbtree_testcase_1w_0(connfd);
+    array_testcase_1w(connfd);
+    array_testcase_1w_0(connfd);
+    hash_testcase_1w(connfd);
+    hash_testcase_1w_0(connfd);
+    skiplist_testcase_1w(connfd);
+    hash_testcase(connfd);
+    skiplist_testcase(connfd);
+    skiplist_testcase_1w_0(connfd);
+
+    
 
     return 0;
 }
