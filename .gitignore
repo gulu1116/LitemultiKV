@@ -1,0 +1,31 @@
+# 编译产物
+*.o
+*.a
+*.so
+*.out
+*.exe
+
+# C/C++ 自动生成文件
+*.d
+*.obj
+*.elf
+
+# 可执行文件（无后缀） - 忽略 bin/ 和 build/ 下的一切
+/bin/
+/build/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# 备份/临时文件
+*.swp
+*.swo
+*.tmp
+*.log
+
+# IDE 相关（可选）
+.vscode/
+.idea/

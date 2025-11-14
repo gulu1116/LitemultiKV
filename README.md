@@ -16,7 +16,6 @@
 ## 项目结构
 ```
 .
-├── .vscode/          # VS Code本地配置（可忽略）
 ├── NtyCo/            # 协程库核心实现
 ├── kvs-client/       # 多语言客户端示例
 ├── Makefile          # 构建配置文件
