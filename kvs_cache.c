@@ -281,3 +281,279 @@ static EvictNode *lfu_evict(LFUCache *cache)
     lfu_heapify_down(cache, 1);
     return victim;
 }
+
+/* ====================== ARC 实现 ====================== */
+static void arc_init(ARCCache *cache, int max_size)
+{
+    cache->max_size = max_size;
+    cache->target_size = max_size / 2;
+    cache->t1 = (LRUCache *)calloc(1, sizeof(LRUCache));
+    cache->t2 = (LRUCache *)calloc(1, sizeof(LRUCache));
+    cache->b1 = (LRUCache *)calloc(1, sizeof(LRUCache));
+    cache->b2 = (LRUCache *)calloc(1, sizeof(LRUCache));
+
+    lru_init(cache->t1, max_size);
+    lru_init(cache->t2, max_size);
+    lru_init(cache->b1, max_size);
+    lru_init(cache->b2, max_size);
+}
+
+static EvictNode *lru_find(LRUCache *cache, const char *key)
+{
+    EvictNode *node = cache->head;
+    while (node)
+    {
+        if (node->key && strcmp(node->key, key) == 0)
+            return node;
+        node = node->next;
+    }
+    return NULL;
+}
+
+static void lru_remove_node(LRUCache *cache, EvictNode *node)
+{
+    if (node->prev)
+        node->prev->next = node->next;
+    else
+        cache->head = node->next;
+
+    if (node->next)
+        node->next->prev = node->prev;
+    else
+        cache->tail = node->prev;
+
+    cache->size--;
+}
+
+static void lru_add_node_front(LRUCache *cache, EvictNode *node)
+{
+    node->next = cache->head;
+    node->prev = NULL;
+
+    if (cache->head)
+        cache->head->prev = node;
+    cache->head = node;
+
+    if (!cache->tail)
+        cache->tail = node;
+
+    cache->size++;
+}
+
+#define ARC_MISS 0
+#define ARC_HIT_T1 1
+#define ARC_HIT_T2 2
+#define ARC_HIT_B1 3
+#define ARC_HIT_B2 4
+
+static int arc_access(ARCCache *cache, const char *key)
+{
+    EvictNode *node = NULL;
+
+    node = lru_find(cache->t1, key);
+    if (node)
+    {
+        lru_remove_node(cache->t1, node);
+        lru_add_node_front(cache->t2, node);
+        node->is_frequent = 1;
+        return ARC_HIT_T1;
+    }
+
+    node = lru_find(cache->t2, key);
+    if (node)
+    {
+        lru_remove_node(cache->t2, node);
+        lru_add_node_front(cache->t2, node);
+        return ARC_HIT_T2;
+    }
+
+    node = lru_find(cache->b1, key);
+    if (node)
+    {
+        int delta = 1;
+        if (cache->b2->size > 0)
+        {
+            delta = cache->b2->size / cache->b1->size;
+            if (delta < 1)
+                delta = 1;
+        }
+        cache->target_size = cache->target_size + delta;
+        if (cache->target_size > cache->max_size)
+            cache->target_size = cache->max_size;
+
+        lru_remove_node(cache->b1, node);
+        lru_add_node_front(cache->t2, node);
+        node->is_frequent = 1;
+        return ARC_HIT_B1;
+    }
+
+    node = lru_find(cache->b2, key);
+    if (node)
+    {
+        int delta = 1;
+        if (cache->b1->size > 0)
+        {
+            delta = cache->b1->size / cache->b2->size;
+            if (delta < 1)
+                delta = 1;
+        }
+        cache->target_size = cache->target_size - delta;
+        if (cache->target_size < 0)
+            cache->target_size = 0;
+
+        lru_remove_node(cache->b2, node);
+        lru_add_node_front(cache->t2, node);
+        node->is_frequent = 1;
+        return ARC_HIT_B2;
+    }
+
+    return ARC_MISS;
+}
+
+static EvictNode *arc_evict(ARCCache *cache)
+{
+    int total = cache->t1->size + cache->t2->size;
+    if (total < cache->max_size)
+        return NULL;
+
+    EvictNode *victim = NULL;
+
+    if (cache->t1->size > cache->target_size)
+    {
+        victim = cache->t1->tail;
+        if (victim)
+        {
+            lru_remove_node(cache->t1, victim);
+            EvictNode *ghost = (EvictNode *)kvs_malloc(sizeof(EvictNode));
+            ghost->key = kvs_strdup(victim->key);
+            ghost->value = NULL;
+            ghost->value_len = 0;
+            ghost->is_frequent = 0;
+            ghost->access_time = current_time_ms();
+            ghost->access_count = victim->access_count;
+            lru_add_node_front(cache->b1, ghost);
+
+            while (cache->b1->size > cache->max_size)
+            {
+                EvictNode *old_ghost = cache->b1->tail;
+                lru_remove_node(cache->b1, old_ghost);
+                kvs_free(old_ghost->key);
+                kvs_free(old_ghost);
+            }
+            return victim;
+        }
+    }
+
+    victim = cache->t2->tail;
+    if (victim)
+    {
+        lru_remove_node(cache->t2, victim);
+        EvictNode *ghost = (EvictNode *)kvs_malloc(sizeof(EvictNode));
+        ghost->key = kvs_strdup(victim->key);
+        ghost->value = NULL;
+        ghost->value_len = 0;
+        ghost->is_frequent = 1;
+        ghost->access_time = current_time_ms();
+        ghost->access_count = victim->access_count;
+        lru_add_node_front(cache->b2, ghost);
+
+        while (cache->b2->size > cache->max_size)
+        {
+            EvictNode *old_ghost = cache->b2->tail;
+            lru_remove_node(cache->b2, old_ghost);
+            kvs_free(old_ghost->key);
+            kvs_free(old_ghost);
+        }
+        return victim;
+    }
+
+    return NULL;
+}
+
+static void arc_add(ARCCache *cache, const char *key, void *value, int value_len)
+{
+    EvictNode *victim = arc_evict(cache);
+    if (victim)
+    {
+        kvs_free(victim->key);
+        kvs_free(victim->value);
+        kvs_free(victim);
+    }
+
+    EvictNode *node = (EvictNode *)kvs_malloc(sizeof(EvictNode));
+    node->key = kvs_strdup(key);
+    node->value = kvs_malloc(value_len);
+    memcpy(node->value, value, value_len);
+    node->value_len = value_len;
+    node->is_frequent = 0;
+    node->access_time = current_time_ms();
+    node->access_count = 1;
+    node->prev = node->next = NULL;
+
+    lru_add_node_front(cache->t1, node);
+}
+
+static void *arc_get(ARCCache *cache, const char *key, int *value_len)
+{
+    int hit_type = arc_access(cache, key);
+
+    if (hit_type == ARC_HIT_T1 || hit_type == ARC_HIT_T2)
+    {
+        EvictNode *node = lru_find(cache->t2, key);
+        if (!node)
+            node = lru_find(cache->t1, key);
+        if (node && node->value)
+        {
+            if (value_len)
+                *value_len = node->value_len;
+            return node->value;
+        }
+    }
+
+    return NULL;
+}
+
+static int arc_del(ARCCache *cache, const char *key)
+{
+    EvictNode *node = NULL;
+
+    node = lru_find(cache->t1, key);
+    if (node)
+    {
+        lru_remove_node(cache->t1, node);
+        kvs_free(node->key);
+        kvs_free(node->value);
+        kvs_free(node);
+        return 0;
+    }
+
+    node = lru_find(cache->t2, key);
+    if (node)
+    {
+        lru_remove_node(cache->t2, node);
+        kvs_free(node->key);
+        kvs_free(node->value);
+        kvs_free(node);
+        return 0;
+    }
+
+    node = lru_find(cache->b1, key);
+    if (node)
+    {
+        lru_remove_node(cache->b1, node);
+        kvs_free(node->key);
+        kvs_free(node);
+        return 0;
+    }
+
+    node = lru_find(cache->b2, key);
+    if (node)
+    {
+        lru_remove_node(cache->b2, node);
+        kvs_free(node->key);
+        kvs_free(node);
+        return 0;
+    }
+
+    return -1;
+}
