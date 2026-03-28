@@ -83,7 +83,7 @@ typedef struct
     int max_size;
 } ARCCache;
 
-/* ====================== 增强版统计结构 ====================== */
+/* ====================== 统计结构 ====================== */
 typedef struct
 {
     float hit_rate_history[HISTORY_SIZE];
@@ -150,4 +150,59 @@ static unsigned long current_time_sec(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (unsigned long)ts.tv_sec;
+}
+
+/* ====================== LRU 实现 ====================== */
+static void lru_init(LRUCache *cache, int max_size)
+{
+    cache->head = NULL;
+    cache->tail = NULL;
+    cache->size = 0;
+    cache->max_size = max_size;
+}
+
+static void lru_remove(LRUCache *cache, EvictNode *node)
+{
+    if (node->prev)
+        node->prev->next = node->next;
+    else
+        cache->head = node->next;
+
+    if (node->next)
+        node->next->prev = node->prev;
+    else
+        cache->tail = node->prev;
+
+    cache->size--;
+}
+
+static void lru_add_front(LRUCache *cache, EvictNode *node)
+{
+    node->next = cache->head;
+    node->prev = NULL;
+
+    if (cache->head)
+        cache->head->prev = node;
+    cache->head = node;
+
+    if (!cache->tail)
+        cache->tail = node;
+
+    cache->size++;
+}
+
+static void lru_touch(LRUCache *cache, EvictNode *node)
+{
+    lru_remove(cache, node);
+    lru_add_front(cache, node);
+    node->access_time = current_time_ms();
+}
+
+static EvictNode *lru_evict(LRUCache *cache)
+{
+    if (!cache->tail)
+        return NULL;
+    EvictNode *victim = cache->tail;
+    lru_remove(cache, victim);
+    return victim;
 }
