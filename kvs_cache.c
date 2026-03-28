@@ -206,3 +206,78 @@ static EvictNode *lru_evict(LRUCache *cache)
     lru_remove(cache, victim);
     return victim;
 }
+
+/* ====================== LFU 最小堆实现 ====================== */
+static void lfu_init(LFUCache *cache, int capacity)
+{
+    cache->nodes = (EvictNode **)calloc(capacity + 1, sizeof(EvictNode *));
+    cache->size = 0;
+    cache->capacity = capacity;
+}
+
+static void lfu_swap(LFUCache *cache, int i, int j)
+{
+    EvictNode *tmp = cache->nodes[i];
+    cache->nodes[i] = cache->nodes[j];
+    cache->nodes[j] = tmp;
+}
+
+static void lfu_heapify_up(LFUCache *cache, int idx)
+{
+    while (idx > 1)
+    {
+        int parent = idx / 2;
+        if (cache->nodes[parent]->access_count <= cache->nodes[idx]->access_count)
+            break;
+        lfu_swap(cache, parent, idx);
+        idx = parent;
+    }
+}
+
+static void lfu_heapify_down(LFUCache *cache, int idx)
+{
+    while (1)
+    {
+        int smallest = idx;
+        int left = idx * 2;
+        int right = idx * 2 + 1;
+
+        if (left <= cache->size && cache->nodes[left]->access_count < cache->nodes[smallest]->access_count)
+            smallest = left;
+        if (right <= cache->size && cache->nodes[right]->access_count < cache->nodes[smallest]->access_count)
+            smallest = right;
+
+        if (smallest == idx)
+            break;
+
+        lfu_swap(cache, smallest, idx);
+        idx = smallest;
+    }
+}
+
+static void lfu_add(LFUCache *cache, EvictNode *node)
+{
+    if (cache->size >= cache->capacity)
+        return;
+
+    cache->size++;
+    cache->nodes[cache->size] = node;
+    lfu_heapify_up(cache, cache->size);
+}
+
+static void lfu_touch(LFUCache *cache, EvictNode *node)
+{
+    node->access_count++;
+    (void)cache;
+}
+
+static EvictNode *lfu_evict(LFUCache *cache)
+{
+    if (cache->size == 0)
+        return NULL;
+    EvictNode *victim = cache->nodes[1];
+    cache->nodes[1] = cache->nodes[cache->size];
+    cache->size--;
+    lfu_heapify_down(cache, 1);
+    return victim;
+}
