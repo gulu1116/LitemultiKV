@@ -557,3 +557,642 @@ static int arc_del(ARCCache *cache, const char *key)
 
     return -1;
 }
+
+/* ====================== 缓存管理器 API ====================== */
+int kvs_cache_init(int max_items)
+{
+    memset(&g_cache, 0, sizeof(CacheManager));
+
+    g_cache.policy = EVICT_LRU;
+    g_cache.max_items = max_items > 0 ? max_items : DEFAULT_MAX_ITEMS;
+
+    lru_init(&g_cache.lru, g_cache.max_items);
+    lfu_init(&g_cache.lfu, g_cache.max_items);
+    arc_init(&g_cache.arc, g_cache.max_items);
+
+    g_cache.ai.threshold_hit_rate = 50.0f;
+    g_cache.ai.threshold_burst_ratio = 5.0f;
+    g_cache.ai.auto_adjust_enabled = 1;
+    g_cache.ai.adjust_cooldown = 60;
+    g_cache.ai.pattern_confidence = CONFIDENCE_MEDIUM;
+
+    return 0;
+}
+
+void kvs_cache_destroy(void)
+{
+    EvictNode *node = g_cache.lru.head;
+    while (node)
+    {
+        EvictNode *next = node->next;
+        kvs_free(node->key);
+        kvs_free(node->value);
+        kvs_free(node);
+        node = next;
+    }
+
+    if (g_cache.lfu.nodes)
+        kvs_free(g_cache.lfu.nodes);
+    if (g_cache.arc.t1)
+        kvs_free(g_cache.arc.t1);
+    if (g_cache.arc.t2)
+        kvs_free(g_cache.arc.t2);
+    if (g_cache.arc.b1)
+        kvs_free(g_cache.arc.b1);
+    if (g_cache.arc.b2)
+        kvs_free(g_cache.arc.b2);
+}
+
+static void update_time_windows(CacheManager *cm)
+{
+    unsigned long now = current_time_sec();
+    AIStats *ai = &cm->ai;
+
+    if (ai->last_minute == 0)
+    {
+        ai->last_minute = now / 60;
+        ai->last_hour = now / 3600;
+        return;
+    }
+
+    unsigned long current_minute = now / 60;
+    unsigned long current_hour = now / 3600;
+
+    if (current_minute > ai->last_minute)
+    {
+        int shift = (int)(current_minute - ai->last_minute);
+        if (shift >= MINUTE_WINDOW)
+        {
+            memset(ai->access_by_minute, 0, sizeof(ai->access_by_minute));
+        }
+        else
+        {
+            for (int i = MINUTE_WINDOW - 1; i >= shift; i--)
+            {
+                ai->access_by_minute[i] = ai->access_by_minute[i - shift];
+            }
+            for (int i = 0; i < shift && i < MINUTE_WINDOW; i++)
+            {
+                ai->access_by_minute[i] = 0;
+            }
+        }
+        ai->last_minute = current_minute;
+    }
+
+    if (current_hour > ai->last_hour)
+    {
+        int shift = (int)(current_hour - ai->last_hour);
+        if (shift >= HOUR_WINDOW)
+        {
+            memset(ai->access_by_hour, 0, sizeof(ai->access_by_hour));
+        }
+        else
+        {
+            for (int i = HOUR_WINDOW - 1; i >= shift; i--)
+            {
+                ai->access_by_hour[i] = ai->access_by_hour[i - shift];
+            }
+            for (int i = 0; i < shift && i < HOUR_WINDOW; i++)
+            {
+                ai->access_by_hour[i] = 0;
+            }
+        }
+        ai->last_hour = current_hour;
+    }
+}
+
+void kvs_cache_record_access(const char *key)
+{
+    unsigned long now = current_time_ms();
+    g_cache.total_access++;
+
+    unsigned long second = now / 1000;
+    if (g_cache.last_update_time == 0)
+        g_cache.last_update_time = second;
+
+    if (second > g_cache.last_update_time)
+    {
+        int shift = (int)(second - g_cache.last_update_time);
+        if (shift > 60)
+        {
+            memset(g_cache.access_by_second, 0, sizeof(g_cache.access_by_second));
+        }
+        else
+        {
+            for (int i = 59; i >= shift; i--)
+            {
+                g_cache.access_by_second[i] = g_cache.access_by_second[i - shift];
+            }
+            for (int i = 0; i < shift && i < 60; i++)
+            {
+                g_cache.access_by_second[i] = 0;
+            }
+        }
+        g_cache.last_update_time = second;
+
+        float current_hit_rate = (g_cache.total_access > 0)
+                                     ? (100.0f * g_cache.cache_hit / g_cache.total_access)
+                                     : 0.0f;
+        record_hit_rate_sample(&g_cache, current_hit_rate);
+
+        update_dynamic_thresholds(&g_cache);
+    }
+
+    int sec_idx = (int)(second % 60);
+    g_cache.access_by_second[sec_idx]++;
+
+    update_time_windows(&g_cache);
+
+    unsigned long current_minute = current_time_sec() / 60;
+    int min_idx = (int)(current_minute % MINUTE_WINDOW);
+    g_cache.ai.access_by_minute[min_idx]++;
+
+    unsigned long current_hour = current_time_sec() / 3600;
+    int hour_idx = (int)(current_hour % HOUR_WINDOW);
+    g_cache.ai.access_by_hour[hour_idx]++;
+
+    (void)key;
+}
+
+void kvs_cache_touch_lru(const char *key)
+{
+    EvictNode *node = g_cache.lru.head;
+    while (node)
+    {
+        if (strcmp(node->key, key) == 0)
+        {
+            lru_touch(&g_cache.lru, node);
+            break;
+        }
+        node = node->next;
+    }
+}
+
+char *kvs_cache_lru_evict_key(void)
+{
+    EvictNode *victim = lru_evict(&g_cache.lru);
+    if (victim)
+    {
+        g_cache.eviction_count++;
+        char *evicted_key = victim->key;
+        kvs_free(victim->value);
+        kvs_free(victim);
+        return evicted_key;
+    }
+    return NULL;
+}
+
+int kvs_cache_lru_need_evict(void)
+{
+    return (g_cache.lru.size >= g_cache.max_items);
+}
+
+void kvs_cache_lru_add(const char *key, void *value, int value_len)
+{
+    if (g_cache.policy == EVICT_ARC)
+    {
+        arc_add(&g_cache.arc, key, value, value_len);
+        return;
+    }
+
+    EvictNode *node = (EvictNode *)kvs_malloc(sizeof(EvictNode));
+    node->key = kvs_malloc(strlen(key) + 1);
+    strcpy(node->key, key);
+    node->value = kvs_malloc(value_len);
+    memcpy(node->value, value, value_len);
+    node->value_len = value_len;
+    node->access_time = current_time_ms();
+    node->access_count = 1;
+    node->prev = node->next = NULL;
+
+    if (g_cache.policy == EVICT_LRU)
+    {
+        while (g_cache.lru.size >= g_cache.max_items)
+        {
+            char *ek = kvs_cache_lru_evict_key();
+            if (ek)
+            {
+                kvs_free(ek);
+            }
+        }
+        lru_add_front(&g_cache.lru, node);
+    }
+    else if (g_cache.policy == EVICT_LFU)
+    {
+        if (g_cache.lfu.size >= g_cache.lfu.capacity)
+        {
+            EvictNode *victim = lfu_evict(&g_cache.lfu);
+            if (victim)
+            {
+                kvs_free(victim->key);
+                kvs_free(victim->value);
+                kvs_free(victim);
+            }
+        }
+        lfu_add(&g_cache.lfu, node);
+    }
+}
+
+const char *kvs_cache_policy_name(int policy)
+{
+    switch (policy)
+    {
+    case EVICT_LRU:
+        return "LRU";
+    case EVICT_LFU:
+        return "LFU";
+    case EVICT_ARC:
+        return "ARC";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static const char *pattern_name(AccessPattern pattern)
+{
+    switch (pattern)
+    {
+    case PATTERN_STABLE:
+        return "Stable";
+    case PATTERN_BURSTY:
+        return "Bursty";
+    case PATTERN_PERIODIC:
+        return "Periodic";
+    case PATTERN_RANDOM:
+        return "Random";
+    default:
+        return "Unknown";
+    }
+}
+
+static const char *confidence_name(int confidence)
+{
+    switch (confidence)
+    {
+    case CONFIDENCE_HIGH:
+        return "High";
+    case CONFIDENCE_MEDIUM:
+        return "Medium";
+    case CONFIDENCE_LOW:
+        return "Low";
+    default:
+        return "Unknown";
+    }
+}
+
+void kvs_cache_set_policy(int policy)
+{
+    g_cache.policy = policy;
+    g_cache.policy_changes++;
+}
+
+int kvs_cache_get_policy(void)
+{
+    return g_cache.policy;
+}
+
+void kvs_cache_get_stats(char *out, int max_len)
+{
+    float hit_rate = (g_cache.total_access > 0)
+                         ? (100.0f * g_cache.cache_hit / g_cache.total_access)
+                         : 0.0f;
+
+    unsigned long recent_qps = 0;
+    for (int i = 0; i < 60; i++)
+        recent_qps += g_cache.access_by_second[i];
+    recent_qps /= 60;
+
+    unsigned long minute_total = 0;
+    for (int i = 0; i < MINUTE_WINDOW; i++)
+    {
+        minute_total += g_cache.ai.access_by_minute[i];
+    }
+    unsigned long avg_per_minute = minute_total / MINUTE_WINDOW;
+
+    int len;
+    if (g_cache.policy == EVICT_ARC)
+    {
+        len = snprintf(out, max_len,
+                       "=== Cache Statistics (Enhanced) ===\r\n"
+                       "  Policy: %s\r\n"
+                       "  Max Items: %d\r\n"
+                       "  T1 Size: %d (recent)\r\n"
+                       "  T2 Size: %d (frequent)\r\n"
+                       "  B1 Size: %d (ghost recent)\r\n"
+                       "  B2 Size: %d (ghost frequent)\r\n"
+                       "  Target T1 Size: %d\r\n"
+                       "  Total Access: %lu\r\n"
+                       "  Cache Hits: %lu\r\n"
+                       "  Cache Miss: %lu\r\n"
+                       "  Hit Rate: %.2f%%\r\n"
+                       "  Evictions: %lu\r\n"
+                       "  Policy Changes: %lu\r\n"
+                       "  Recent QPS: ~%lu/s\r\n"
+                       "  Avg Access/Min: ~%lu\r\n"
+                       "  Detected Pattern: %s\r\n"
+                       "  Dynamic Threshold (Hit Rate): %.1f%%\r\n"
+                       "  Dynamic Threshold (Burst): %.1fx\r\n"
+                       "===================================\r\n",
+                       kvs_cache_policy_name(g_cache.policy),
+                       g_cache.max_items,
+                       g_cache.arc.t1->size,
+                       g_cache.arc.t2->size,
+                       g_cache.arc.b1->size,
+                       g_cache.arc.b2->size,
+                       g_cache.arc.target_size,
+                       g_cache.total_access,
+                       g_cache.cache_hit,
+                       g_cache.cache_miss,
+                       hit_rate,
+                       g_cache.eviction_count,
+                       g_cache.policy_changes,
+                       recent_qps,
+                       avg_per_minute,
+                       pattern_name(g_cache.ai.detected_pattern),
+                       g_cache.ai.threshold_hit_rate,
+                       g_cache.ai.threshold_burst_ratio);
+    }
+    else
+    {
+        len = snprintf(out, max_len,
+                       "=== Cache Statistics (Enhanced) ===\r\n"
+                       "  Policy: %s\r\n"
+                       "  Max Items: %d\r\n"
+                       "  Cache Size: %d\r\n"
+                       "  Total Access: %lu\r\n"
+                       "  Cache Hits: %lu\r\n"
+                       "  Cache Miss: %lu\r\n"
+                       "  Hit Rate: %.2f%%\r\n"
+                       "  Evictions: %lu\r\n"
+                       "  Policy Changes: %lu\r\n"
+                       "  Recent QPS: ~%lu/s\r\n"
+                       "  Avg Access/Min: ~%lu\r\n"
+                       "  Detected Pattern: %s\r\n"
+                       "  Dynamic Threshold (Hit Rate): %.1f%%\r\n"
+                       "  Dynamic Threshold (Burst): %.1fx\r\n"
+                       "===================================\r\n",
+                       kvs_cache_policy_name(g_cache.policy),
+                       g_cache.max_items,
+                       g_cache.lru.size,
+                       g_cache.total_access,
+                       g_cache.cache_hit,
+                       g_cache.cache_miss,
+                       hit_rate,
+                       g_cache.eviction_count,
+                       g_cache.policy_changes,
+                       recent_qps,
+                       avg_per_minute,
+                       pattern_name(g_cache.ai.detected_pattern),
+                       g_cache.ai.threshold_hit_rate,
+                       g_cache.ai.threshold_burst_ratio);
+    }
+    (void)len;
+}
+
+void kvs_cache_ai_recommend(char *out, int max_len)
+{
+    unsigned long peak_qps = 0, avg_qps = 0, total = 0;
+    for (int i = 0; i < 60; i++)
+    {
+        unsigned long v = g_cache.access_by_second[i];
+        total += v;
+        if (v > peak_qps)
+            peak_qps = v;
+    }
+    avg_qps = total / 60;
+
+    float hit_rate = (g_cache.total_access > 0)
+                         ? (100.0f * g_cache.cache_hit / g_cache.total_access)
+                         : 0.0f;
+
+    float peak_to_avg = (avg_qps > 0) ? ((float)peak_qps / avg_qps) : 0.0f;
+
+    g_cache.ai.detected_pattern = detect_access_pattern(&g_cache);
+
+    g_cache.ai.predicted_hit_rate = exponential_smooth(
+        g_cache.ai.hit_rate_history,
+        g_cache.ai.history_count,
+        SMOOTH_ALPHA);
+
+    g_cache.ai.predicted_qps = (float)avg_qps * 1.1f;
+
+    int recommended_policy = g_cache.policy;
+    int recommended_max = g_cache.max_items;
+    int confidence = CONFIDENCE_MEDIUM;
+    const char *reason = "";
+    const char *detail = "";
+
+    if (hit_rate < g_cache.ai.threshold_hit_rate)
+    {
+        recommended_policy = EVICT_LFU;
+        recommended_max = g_cache.max_items * 2;
+        confidence = CONFIDENCE_HIGH;
+        reason = "Low hit rate detected";
+        detail = "LFU better identifies persistent hot keys when hit rate is low";
+    }
+    else if (peak_to_avg > g_cache.ai.threshold_burst_ratio)
+    {
+        recommended_policy = EVICT_ARC;
+        recommended_max = g_cache.max_items * 2;
+        confidence = CONFIDENCE_HIGH;
+        reason = "Bursty access pattern detected";
+        detail = "ARC dual-buffer adapts well to sudden traffic spikes";
+    }
+    else if (g_cache.ai.detected_pattern == PATTERN_PERIODIC)
+    {
+        recommended_policy = EVICT_ARC;
+        confidence = CONFIDENCE_MEDIUM;
+        reason = "Periodic access pattern detected";
+        detail = "ARC adapts well to time-varying access patterns";
+    }
+    else if (g_cache.ai.detected_pattern == PATTERN_RANDOM)
+    {
+        recommended_policy = EVICT_LRU;
+        confidence = CONFIDENCE_LOW;
+        reason = "Random access pattern detected";
+        detail = "LRU provides best overall performance for random access";
+    }
+    else if (g_cache.policy_changes > 3)
+    {
+        recommended_policy = EVICT_LRU;
+        confidence = CONFIDENCE_MEDIUM;
+        reason = "Frequent policy changes detected";
+        detail = "Stick with LRU for stability";
+    }
+    else
+    {
+        confidence = CONFIDENCE_HIGH;
+        reason = "Current configuration is optimal";
+        detail = "No changes needed - system performing well";
+    }
+
+    int len = snprintf(out, max_len,
+                       "=== AI Cache Recommendation (Enhanced) ===\r\n"
+                       "\r\n"
+                       "[Current Status]\r\n"
+                       "  Policy: %s\r\n"
+                       "  Hit Rate: %.2f%% (Predicted: %.1f%%)\r\n"
+                       "  Peak QPS: %lu, Avg QPS: %lu\r\n"
+                       "  Peak/Avg Ratio: %.2fx\r\n"
+                       "  Predicted QPS: %.0f\r\n"
+                       "\r\n"
+                       "[Pattern Analysis]\r\n"
+                       "  Detected Pattern: %s\r\n"
+                       "  Dynamic Hit Rate Threshold: %.1f%%\r\n"
+                       "  Dynamic Burst Threshold: %.1fx\r\n"
+                       "  History Samples: %d\r\n"
+                       "\r\n"
+                       "[Recommendation]\r\n"
+                       "  Recommended Policy: %s\r\n"
+                       "  Recommended Max Items: %d\r\n"
+                       "  Confidence: %s\r\n"
+                       "  Reason: %s\r\n"
+                       "  Detail: %s\r\n"
+                       "\r\n"
+                       "[Actions]\r\n"
+                       "  To apply: POLICY SET %s\r\n"
+                       "  To view stats: STATS\r\n"
+                       "=========================================\r\n",
+                       kvs_cache_policy_name(g_cache.policy),
+                       hit_rate,
+                       g_cache.ai.predicted_hit_rate,
+                       peak_qps, avg_qps,
+                       peak_to_avg,
+                       g_cache.ai.predicted_qps,
+                       pattern_name(g_cache.ai.detected_pattern),
+                       g_cache.ai.threshold_hit_rate,
+                       g_cache.ai.threshold_burst_ratio,
+                       g_cache.ai.history_count,
+                       kvs_cache_policy_name(recommended_policy),
+                       recommended_max,
+                       confidence_name(confidence),
+                       reason,
+                       detail,
+                       kvs_cache_policy_name(recommended_policy));
+    (void)len;
+}
+
+void kvs_cache_record_hit(void)
+{
+    g_cache.cache_hit++;
+}
+
+void kvs_cache_record_miss(void)
+{
+    g_cache.cache_miss++;
+}
+
+void *kvs_cache_get(const char *key, int *value_len)
+{
+    if (!key || !g_cache.max_items)
+        return NULL;
+
+    EvictNode *node = NULL;
+
+    switch (g_cache.policy)
+    {
+    case EVICT_LRU:
+        for (node = g_cache.lru.head; node; node = node->next)
+        {
+            if (node->key && strcmp(node->key, key) == 0)
+            {
+                lru_touch(&g_cache.lru, node);
+                g_cache.cache_hit++;
+                g_cache.total_access++;
+                if (value_len)
+                    *value_len = node->value_len;
+                return node->value;
+            }
+        }
+        break;
+
+    case EVICT_LFU:
+        for (int i = 1; i <= g_cache.lfu.size; i++)
+        {
+            node = g_cache.lfu.nodes[i];
+            if (node && node->key && strcmp(node->key, key) == 0)
+            {
+                node->access_count++;
+                lfu_heapify_down(&g_cache.lfu, i);
+                g_cache.cache_hit++;
+                g_cache.total_access++;
+                if (value_len)
+                    *value_len = node->value_len;
+                return node->value;
+            }
+        }
+        break;
+
+    case EVICT_ARC:
+    {
+        void *result = arc_get(&g_cache.arc, key, value_len);
+        if (result)
+        {
+            g_cache.cache_hit++;
+        }
+        else
+        {
+            g_cache.cache_miss++;
+        }
+        g_cache.total_access++;
+        return result;
+    }
+    }
+
+    g_cache.cache_miss++;
+    g_cache.total_access++;
+    return NULL;
+}
+
+int kvs_cache_del(const char *key)
+{
+    if (!key || !g_cache.max_items)
+        return -1;
+
+    EvictNode *node = NULL;
+    EvictNode *prev_node = NULL;
+
+    switch (g_cache.policy)
+    {
+    case EVICT_LRU:
+        for (node = g_cache.lru.head; node; prev_node = node, node = node->next)
+        {
+            if (node->key && strcmp(node->key, key) == 0)
+            {
+                lru_remove(&g_cache.lru, node);
+                kvs_free(node->key);
+                kvs_free(node->value);
+                kvs_free(node);
+                return 0;
+            }
+        }
+        break;
+
+    case EVICT_LFU:
+        for (int i = 1; i <= g_cache.lfu.size; i++)
+        {
+            node = g_cache.lfu.nodes[i];
+            if (node && node->key && strcmp(node->key, key) == 0)
+            {
+                EvictNode *last = g_cache.lfu.nodes[g_cache.lfu.size];
+                g_cache.lfu.nodes[i] = last;
+                g_cache.lfu.size--;
+
+                lfu_heapify_down(&g_cache.lfu, i);
+
+                kvs_free(node->key);
+                kvs_free(node->value);
+                kvs_free(node);
+                return 0;
+            }
+        }
+        break;
+
+    case EVICT_ARC:
+        return arc_del(&g_cache.arc, key);
+    }
+
+    return -2;
+}
+
+#endif /* ENABLE_CACHE */
