@@ -1,6 +1,8 @@
 # LiteMultiKV
 
-一个轻量级、多引擎的高性能键值存储系统，支持多种数据结构、向量检索、智能缓存和多租户隔离。
+Lightweight multi-engine KV store | Multi-engine · Vector Search · Smart Cache · Multi-tenant
+
+> **PS**: Work in progress, some features are under development.
 
 ---
 
@@ -60,7 +62,7 @@ make
 
 ```bash
 # 新开终端，运行测试
-python3 test_comprehensive.py
+python3 tests/test_comprehensive.py
 ```
 
 预期输出：
@@ -216,7 +218,7 @@ STATS
 RECOMMEND
 ```
 
-### AI 调优功能（增强版）
+### AI 调优功能
 
 系统会自动分析访问模式，提供智能调优建议：
 
@@ -347,7 +349,7 @@ LASTSAVE
 ./kvstore 19999
 
 # 运行综合测试（另一个终端）
-python3 test_comprehensive.py
+python3 tests/test_comprehensive.py
 ```
 
 ### 测试覆盖
@@ -446,23 +448,33 @@ func main() {
 
 ```
 LitemultiKV-main/
-├── kvstore.c            # 主服务程序
-├── kvstore.h            # 公共头文件
-├── reactor.c            # Reactor 网络模型
-├── kvs_array.c          # 数组存储引擎
-├── kvs_hash.c           # 哈希存储引擎
-├── kvs_rbtree.c         # 红黑树存储引擎
-├── kvs_skiptable.c      # 跳表存储引擎
-├── kvs_vector.c         # 向量检索引擎
-├── kvs_cache.c          # 缓存系统（含 AI 调优）
-├── kvs_rdb.c            # RDB 持久化
-├── testcase.c           # C 性能测试工具
-├── test_comprehensive.py # Python 综合测试
-├── NtyCo/               # 协程库
-├── kvs-client/          # 多语言客户端示例
-│   ├── go-client/
-│   ├── py-client/
-│   └── rust-client/
+├── include/                 # 公共头文件
+│   ├── kvstore.h            # 核心数据结构与 API 声明
+│   └── server.h             # 网络连接结构定义
+├── src/
+│   ├── common/
+│   │   └── kvstore.c        # 主服务程序（命令解析、引擎初始化）
+│   ├── engine/
+│   │   ├── kvs_array.c      # 数组存储引擎
+│   │   ├── kvs_hash.c       # 哈希存储引擎
+│   │   ├── kvs_rbtree.c     # 红黑树存储引擎
+│   │   ├── kvs_skiptable.c  # 跳表存储引擎
+│   │   └── kvs_vector.c     # 向量检索引擎 (HNSW)
+│   ├── cache/
+│   │   └── kvs_cache.c      # 缓存系统（LRU/LFU/ARC + AI 调优）
+│   ├── network/
+│   │   ├── reactor.c        # Reactor 网络模型
+│   │   ├── proactor.c       # Proactor 网络模型 (io_uring)
+│   │   └── ntyco.c          # 协程网络模型
+│   └── persist/
+│       └── kvs_rdb.c        # RDB 持久化
+├── tests/
+│   ├── testcase.c           # C 性能测试工具
+│   ├── test_comprehensive.py # Python 综合测试
+│   └── test_kvstore.py      # Python 功能测试
+├── NtyCo/                   # 协程库
+├── kvs-client/              # 多语言客户端示例
+├── docs/                    # 设计文档
 └── Makefile
 ```
 
