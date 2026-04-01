@@ -1,3 +1,20 @@
+/********************************************************************
+ *  LitemultiKV - Cache Eviction Engine (LRU / LFU / ARC)
+ *
+ *  智能缓存淘汰策略层，为所有存储引擎提供：
+ *    - LRU (Least Recently Used)
+ *    - LFU (Least Frequently Used)
+ *    - ARC (Adaptive Replacement Cache) - 双缓冲区自适应
+ *    - 访问模式统计与 AI 调优建议
+ *
+ *  命令:
+ *    POLICY SET <lru|lfu|arc>    设置淘汰策略
+ *    POLICY                       查询当前策略
+ *    STATS                        打印全局统计
+ *    RECOMMEND                    AI 调优建议
+ *
+ *  编译条件: ENABLE_CACHE=1 (kvstore.h)
+ ********************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,6 +167,125 @@ static unsigned long current_time_sec(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (unsigned long)ts.tv_sec;
+}
+
+/* ====================== AI 辅助函数 ====================== */
+static float exponential_smooth(float *history, int count, float alpha)
+{
+    if (count == 0)
+        return 0.0f;
+
+    float prediction = history[0];
+    for (int i = 1; i < count && i < HISTORY_SIZE; i++)
+    {
+        prediction = alpha * history[i] + (1.0f - alpha) * prediction;
+    }
+    return prediction;
+}
+
+static float calculate_variance(float *data, int count, float mean)
+{
+    if (count <= 1)
+        return 0.0f;
+
+    float sum = 0.0f;
+    for (int i = 0; i < count && i < HISTORY_SIZE; i++)
+    {
+        float diff = data[i] - mean;
+        sum += diff * diff;
+    }
+    return sum / (count - 1);
+}
+
+static AccessPattern detect_access_pattern(CacheManager *cm)
+{
+    AIStats *ai = &cm->ai;
+
+    if (ai->history_count < 5)
+    {
+        return PATTERN_STABLE;
+    }
+
+    float mean = 0.0f;
+    for (int i = 0; i < ai->history_count && i < HISTORY_SIZE; i++)
+    {
+        mean += ai->hit_rate_history[i];
+    }
+    mean /= ai->history_count;
+
+    float variance = calculate_variance(ai->hit_rate_history, ai->history_count, mean);
+    float std_dev = sqrtf(variance);
+
+    unsigned long peak_qps = 0, avg_qps = 0, total = 0;
+    for (int i = 0; i < 60; i++)
+    {
+        total += cm->access_by_second[i];
+        if (cm->access_by_second[i] > peak_qps)
+        {
+            peak_qps = cm->access_by_second[i];
+        }
+    }
+    avg_qps = total / 60;
+    float burst_ratio = (avg_qps > 0) ? ((float)peak_qps / avg_qps) : 1.0f;
+
+    if (burst_ratio > 3.0f)
+    {
+        return PATTERN_BURSTY;
+    }
+
+    if (std_dev < 5.0f && mean > 60.0f)
+    {
+        return PATTERN_STABLE;
+    }
+
+    if (std_dev > 15.0f)
+    {
+        return PATTERN_RANDOM;
+    }
+
+    return PATTERN_PERIODIC;
+}
+
+static void update_dynamic_thresholds(CacheManager *cm)
+{
+    AIStats *ai = &cm->ai;
+
+    if (ai->history_count < 3)
+        return;
+
+    float mean = 0.0f;
+    for (int i = 0; i < ai->history_count && i < HISTORY_SIZE; i++)
+    {
+        mean += ai->hit_rate_history[i];
+    }
+    mean /= ai->history_count;
+
+    float variance = calculate_variance(ai->hit_rate_history, ai->history_count, mean);
+    float std_dev = sqrtf(variance);
+
+    ai->threshold_hit_rate = mean - std_dev;
+    if (ai->threshold_hit_rate < 30.0f)
+        ai->threshold_hit_rate = 30.0f;
+    if (ai->threshold_hit_rate > 70.0f)
+        ai->threshold_hit_rate = 70.0f;
+
+    ai->threshold_burst_ratio = 3.0f + (std_dev / 10.0f);
+    if (ai->threshold_burst_ratio > 8.0f)
+        ai->threshold_burst_ratio = 8.0f;
+    if (ai->threshold_burst_ratio < 2.0f)
+        ai->threshold_burst_ratio = 2.0f;
+}
+
+static void record_hit_rate_sample(CacheManager *cm, float hit_rate)
+{
+    AIStats *ai = &cm->ai;
+
+    ai->hit_rate_history[ai->history_idx] = hit_rate;
+    ai->history_idx = (ai->history_idx + 1) % HISTORY_SIZE;
+    if (ai->history_count < HISTORY_SIZE)
+    {
+        ai->history_count++;
+    }
 }
 
 /* ====================== LRU 实现 ====================== */
@@ -581,6 +717,7 @@ int kvs_cache_init(int max_items)
 
 void kvs_cache_destroy(void)
 {
+    /* 释放 LRU 链表 */
     EvictNode *node = g_cache.lru.head;
     while (node)
     {
@@ -590,17 +727,46 @@ void kvs_cache_destroy(void)
         kvs_free(node);
         node = next;
     }
+    g_cache.lru.head = NULL;
+    g_cache.lru.tail = NULL;
 
+    /* 释放 LFU 堆中的节点 */
     if (g_cache.lfu.nodes)
+    {
+        for (int i = 1; i <= g_cache.lfu.size; i++)
+        {
+            if (g_cache.lfu.nodes[i])
+            {
+                kvs_free(g_cache.lfu.nodes[i]->key);
+                kvs_free(g_cache.lfu.nodes[i]->value);
+                kvs_free(g_cache.lfu.nodes[i]);
+            }
+        }
         kvs_free(g_cache.lfu.nodes);
-    if (g_cache.arc.t1)
-        kvs_free(g_cache.arc.t1);
-    if (g_cache.arc.t2)
-        kvs_free(g_cache.arc.t2);
-    if (g_cache.arc.b1)
-        kvs_free(g_cache.arc.b1);
-    if (g_cache.arc.b2)
-        kvs_free(g_cache.arc.b2);
+        g_cache.lfu.nodes = NULL;
+    }
+
+    /* 释放 ARC 四个链表 */
+    LRUCache *arc_lists[] = {g_cache.arc.t1, g_cache.arc.t2, g_cache.arc.b1, g_cache.arc.b2};
+    for (int i = 0; i < 4; i++)
+    {
+        if (!arc_lists[i])
+            continue;
+        EvictNode *n = arc_lists[i]->head;
+        while (n)
+        {
+            EvictNode *next = n->next;
+            kvs_free(n->key);
+            kvs_free(n->value);
+            kvs_free(n);
+            n = next;
+        }
+        kvs_free(arc_lists[i]);
+    }
+    g_cache.arc.t1 = NULL;
+    g_cache.arc.t2 = NULL;
+    g_cache.arc.b1 = NULL;
+    g_cache.arc.b2 = NULL;
 }
 
 static void update_time_windows(CacheManager *cm)
@@ -1150,12 +1316,11 @@ int kvs_cache_del(const char *key)
         return -1;
 
     EvictNode *node = NULL;
-    EvictNode *prev_node = NULL;
 
     switch (g_cache.policy)
     {
     case EVICT_LRU:
-        for (node = g_cache.lru.head; node; prev_node = node, node = node->next)
+        for (node = g_cache.lru.head; node; node = node->next)
         {
             if (node->key && strcmp(node->key, key) == 0)
             {
