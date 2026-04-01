@@ -10,15 +10,17 @@
 *.obj
 *.elf
 
-# 可执行文件（无后缀） - 忽略 bin/ 和 build/ 下的一切
+# 构建输出
 /bin/
 /build/
 
-# CMake
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
+# 二进制可执行文件
+kvstore
+kvstore_proactor
+testcase
+
+# RDB 持久化文件
+dump.rdb
 
 # 备份/临时文件
 *.swp
@@ -26,6 +28,10 @@ Makefile
 *.tmp
 *.log
 
-# IDE 相关（可选）
+# IDE
 .vscode/
 .idea/
+
+# Python
+__pycache__/
+*.pyc
