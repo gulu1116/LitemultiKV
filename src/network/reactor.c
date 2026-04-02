@@ -1,6 +1,5 @@
 
 
-
 #include <errno.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -15,77 +14,72 @@
 
 #include "server.h"
 
+#define CONNECTION_SIZE 1024 // 1048576 // 1024 * 1024
+#define MAX_PORTS 20
 
-#define CONNECTION_SIZE			1024 //1048576 // 1024 * 1024
-#define MAX_PORTS			20
-
-#define TIME_SUB_MS(tv1, tv2)  ((tv1.tv_sec - tv2.tv_sec) * 1000 + (tv1.tv_usec - tv2.tv_usec) / 1000)
-
-
+#define TIME_SUB_MS(tv1, tv2) ((tv1.tv_sec - tv2.tv_sec) * 1000 + (tv1.tv_usec - tv2.tv_usec) / 1000)
 
 #if ENABLE_KVSTORE
 
-typedef int (*msg_handler)(char *msg, int length, char *response);
+typedef int (*msg_handler)(char *msg, int length, char *response, char *namespace);
 
 static msg_handler kvs_handler;
 
-int kvs_request(struct conn *c) {
+int kvs_request(struct conn *c)
+{
 
-    // printf("recv %d : %s\n", c->rlength, c->rbuffer);
+	// printf("recv %d : %s\n", c->rlength, c->rbuffer);
 
-     c->wlength = kvs_handler(c->rbuffer, c->rlength, c->wbuffer);
-
+	c->wlength = kvs_handler(c->rbuffer, c->rlength, c->wbuffer, c->namespace);
+	return 0;
 }
 
-
-int kvs_response(struct conn *c) {
-
-
+int kvs_response(struct conn *c)
+{
+	(void)c;
+	return 0;
 }
 
 #endif
-
 
 int accept_cb(int fd);
 int recv_cb(int fd);
 int send_cb(int fd);
 
-
-
 int epfd = 0;
 struct timeval begin;
-
-
 
 struct conn conn_list[CONNECTION_SIZE] = {0};
 // fd
 
+int set_event(int fd, int event, int flag)
+{
 
-int set_event(int fd, int event, int flag) {
-
-	if (flag) {  // non-zero add
+	if (flag)
+	{ // non-zero add
 
 		struct epoll_event ev;
 		ev.events = event;
 		ev.data.fd = fd;
 		epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
-
-	} else {  // zero mod
+	}
+	else
+	{ // zero mod
 
 		struct epoll_event ev;
 		ev.events = event;
 		ev.data.fd = fd;
 		epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
-		
 	}
-	
 
+	return 0;
 }
 
+int event_register(int fd, int event)
+{
 
-int event_register(int fd, int event) {
-
-	if (fd < 0) return -1;
+	if (fd < 0)
+		return -1;
 
 	conn_list[fd].fd = fd;
 	conn_list[fd].r_action.recv_callback = recv_cb;
@@ -97,54 +91,64 @@ int event_register(int fd, int event) {
 	memset(conn_list[fd].wbuffer, 0, BUFFER_LENGTH);
 	conn_list[fd].wlength = 0;
 
+#if ENABLE_KVSTORE
+	strcpy(conn_list[fd].namespace, "default");
+#endif
+
 	set_event(fd, event, 1);
+
+	return 0;
 }
 
-
 // listenfd(sockfd) --> EPOLLIN --> accept_cb
-int accept_cb(int fd) {
+int accept_cb(int fd)
+{
 
-	struct sockaddr_in  clientaddr;
+	struct sockaddr_in clientaddr;
 	socklen_t len = sizeof(clientaddr);
 
-	int clientfd = accept(fd, (struct sockaddr*)&clientaddr, &len);
-	//printf("accept finshed: %d\n", clientfd);
-	if (clientfd < 0) {
+	int clientfd = accept(fd, (struct sockaddr *)&clientaddr, &len);
+	// printf("accept finshed: %d\n", clientfd);
+	if (clientfd < 0)
+	{
 		printf("accept errno: %d --> %s\n", errno, strerror(errno));
 		return -1;
 	}
-	
-	event_register(clientfd, EPOLLIN);  // | EPOLLET
 
-	if ((clientfd % 1000) == 0) {
+	event_register(clientfd, EPOLLIN); // | EPOLLET
+
+	if ((clientfd % 1000) == 0)
+	{
 
 		struct timeval current;
 		gettimeofday(&current, NULL);
 
 		int time_used = TIME_SUB_MS(current, begin);
+		(void)time_used;
 		memcpy(&begin, &current, sizeof(struct timeval));
-		
 
 		// printf("accept finshed: %d, time_used: %d\n", clientfd, time_used);
-
 	}
 
 	return 0;
 }
 
+int recv_cb(int fd)
+{
 
-int recv_cb(int fd) {
-
-	memset(conn_list[fd].rbuffer, 0, BUFFER_LENGTH );
+	memset(conn_list[fd].rbuffer, 0, BUFFER_LENGTH);
 	int count = recv(fd, conn_list[fd].rbuffer, BUFFER_LENGTH, 0);
-	if (count == 0) { // disconnect
-		//printf("client disconnect: %d\n", fd);
+	if (count == 0)
+	{ // disconnect
+		// printf("client disconnect: %d\n", fd);
 		close(fd);
 
 		epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL); // unfinished
 
 		return 0;
-	} else if (count < 0) { // 
+	}
+	else if (count < 0)
+	{ //
 
 		printf("count: %d, errno: %d, %s\n", count, errno, strerror(errno));
 		close(fd);
@@ -153,9 +157,8 @@ int recv_cb(int fd) {
 		return 0;
 	}
 
-	
 	conn_list[fd].rlength = count;
-	//printf("RECV: %s\n", conn_list[fd].rbuffer);
+	// printf("RECV: %s\n", conn_list[fd].rbuffer);
 
 #if 0 // echo
 
@@ -175,17 +178,16 @@ int recv_cb(int fd) {
 #elif ENABLE_KVSTORE
 
 	kvs_request(&conn_list[fd]);
-	
-#endif
 
+#endif
 
 	set_event(fd, EPOLLOUT, 0);
 
 	return count;
 }
 
-
-int send_cb(int fd) {
+int send_cb(int fd)
+{
 
 #if ENABLE_HTTP
 
@@ -220,70 +222,72 @@ int send_cb(int fd) {
 	}
 #else
 
-	if (conn_list[fd].wlength != 0) {
+	if (conn_list[fd].wlength != 0)
+	{
 		count = send(fd, conn_list[fd].wbuffer, conn_list[fd].wlength, 0);
 	}
-	
+
 	set_event(fd, EPOLLIN, 0);
 
 #endif
-	//set_event(fd, EPOLLOUT, 0);
+	// set_event(fd, EPOLLOUT, 0);
 
 	return count;
 }
 
-
-
-int r_init_server(unsigned short port) {
+int r_init_server(unsigned short port)
+{
 
 	int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
 	struct sockaddr_in servaddr;
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_addr.s_addr = htonl(INADDR_ANY); // 0.0.0.0
-	servaddr.sin_port = htons(port); // 0-1023, 
+	servaddr.sin_port = htons(port);			  // 0-1023,
 
-	if (-1 == bind(sockfd, (struct sockaddr*)&servaddr, sizeof(struct sockaddr))) {
+	if (-1 == bind(sockfd, (struct sockaddr *)&servaddr, sizeof(struct sockaddr)))
+	{
 		printf("bind failed: %s\n", strerror(errno));
 	}
 
 	listen(sockfd, 10);
-	//printf("listen finshed: %d\n", sockfd); // 3 
+	// printf("listen finshed: %d\n", sockfd); // 3
 
 	return sockfd;
-
 }
 
+int reactor_start(unsigned short port, msg_handler handler)
+{
 
-
-int reactor_start(unsigned short port, msg_handler handler) {
-
-	//unsigned short port = 8000;
+	// unsigned short port = 8000;
 	kvs_handler = handler;
 
 	epfd = epoll_create(1);
 
 	int i = 0;
 
-	for (i = 0;i < MAX_PORTS;i ++) {
-		
+	for (i = 0; i < MAX_PORTS; i++)
+	{
+
 		int sockfd = r_init_server(port + i);
-		
+
 		conn_list[sockfd].fd = sockfd;
 		conn_list[sockfd].r_action.recv_callback = accept_cb;
-		
+
 		set_event(sockfd, EPOLLIN, 1);
 	}
 
 	gettimeofday(&begin, NULL);
 
-	while (1) { // mainloop
+	while (1)
+	{ // mainloop
 
 		struct epoll_event events[1024] = {0};
 		int nready = epoll_wait(epfd, events, 1024, -1);
 
 		int i = 0;
-		for (i = 0;i < nready;i ++) {
+		for (i = 0; i < nready; i++)
+		{
 
 			int connfd = events[i].data.fd;
 
@@ -294,20 +298,17 @@ int reactor_start(unsigned short port, msg_handler handler) {
 				conn_list[connfd].send_callback(connfd);
 			}
 
-#else 
-			if (events[i].events & EPOLLIN) {
+#else
+			if (events[i].events & EPOLLIN)
+			{
 				conn_list[connfd].r_action.recv_callback(connfd);
-			} 
+			}
 
-			if (events[i].events & EPOLLOUT) {
+			if (events[i].events & EPOLLOUT)
+			{
 				conn_list[connfd].send_callback(connfd);
 			}
 #endif
 		}
-
 	}
-	
-
 }
-
-
