@@ -1,21 +1,17 @@
 
-
-
-
 #ifndef __SERVER_H__
 #define __SERVER_H__
 
-#define BUFFER_LENGTH		1024
+#define BUFFER_LENGTH 1024
 
-#define ENABLE_HTTP		0
-#define ENABLE_WEBSOCKET	0
-#define ENABLE_KVSTORE		1
-
+#define ENABLE_HTTP 0
+#define ENABLE_WEBSOCKET 0
+#define ENABLE_KVSTORE 1
 
 typedef int (*RCALLBACK)(int fd);
 
-
-struct conn {
+struct conn
+{
 	int fd;
 
 	char rbuffer[BUFFER_LENGTH];
@@ -26,7 +22,8 @@ struct conn {
 
 	RCALLBACK send_callback;
 
-	union {
+	union
+	{
 		RCALLBACK recv_callback;
 		RCALLBACK accept_callback;
 	} r_action;
@@ -57,7 +54,4 @@ int kvs_request(struct conn *c);
 int kvs_response(struct conn *c);
 #endif
 
-
 #endif
-
-
