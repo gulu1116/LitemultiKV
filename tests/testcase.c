@@ -4,51 +4,57 @@
 #include <arpa/inet.h>
 #include <sys/time.h>
 
-
 #define MAX_MSG_LENGTH 1024
-#define TIME_SUB_MS(tv1, tv2)  ((tv1.tv_sec - tv2.tv_sec) * 1000 + (tv1.tv_usec - tv2.tv_usec) / 1000)
+#define TIME_SUB_MS(tv1, tv2) ((tv1.tv_sec - tv2.tv_sec) * 1000 + (tv1.tv_usec - tv2.tv_usec) / 1000)
 
-
-int send_msg(int connfd, char *msg, int length) {
+int send_msg(int connfd, char *msg, int length)
+{
 
     int res = send(connfd, msg, length, 0);
-    if (res < 0) {
+    if (res < 0)
+    {
         perror("send");
         exit(1);
     }
     return res;
 }
 
-int recv_msg(int connfd, char *msg, int length) {
+int recv_msg(int connfd, char *msg, int length)
+{
 
     int res = recv(connfd, msg, length, 0);
-    if (res < 0) {
+    if (res < 0)
+    {
         perror("send");
         exit(1);
     }
     return res;
 }
 
-void testcase(int connfd, char *msg, char *pattern, char *casename) {
+void testcase(int connfd, char *msg, char *pattern, char *casename)
+{
 
-    if (!msg || !pattern || !casename) return;
+    if (!msg || !pattern || !casename)
+        return;
 
     send_msg(connfd, msg, strlen(msg));
 
     char result[MAX_MSG_LENGTH] = {0};
     recv_msg(connfd, result, MAX_MSG_LENGTH);
 
-    if (strcmp(result, pattern) == 0) {
+    if (strcmp(result, pattern) == 0)
+    {
         //  printf("testcase %s passed\n", casename);
-    } else {
+    }
+    else
+    {
         // printf("testcase %s failed, expected: %s, got: %s\n", casename, pattern, result);
         exit(1);
     }
-
 }
 
-
-int connect_tcpserver(const char *ip, unsigned short port) {
+int connect_tcpserver(const char *ip, unsigned short port)
+{
 
     int connfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -59,7 +65,8 @@ int connect_tcpserver(const char *ip, unsigned short port) {
     server_addr.sin_addr.s_addr = inet_addr(ip);
     server_addr.sin_port = htons(port);
 
-    if (0 != connect(connfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_in))) {
+    if (0 != connect(connfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in)))
+    {
 
         perror("connect");
         return -1;
@@ -68,8 +75,8 @@ int connect_tcpserver(const char *ip, unsigned short port) {
     return connfd;
 }
 
-
-void array_testcase(int connfd) {
+void array_testcase(int connfd)
+{
 
     testcase(connfd, "SET Student GuLu", "OK\r\n", "SET-Student-GuLu");
     testcase(connfd, "GET Student", "GuLu\r\n", "GET-Student");
@@ -80,18 +87,19 @@ void array_testcase(int connfd) {
     testcase(connfd, "GET Student", "NO EXIST\r\n", "GET-Student");
     testcase(connfd, "MOD Student Lian", "NO EXIST\r\n", "MOD-Student-Lian");
     testcase(connfd, "EXIST Student", "NO EXIST\r\n", "EXIST-Student");
-
 }
 
-void array_testcase_1w(int connfd) {
+void array_testcase_1w(int connfd)
+{
 
     int count = 10000;
     int i = 0;
 
     struct timeval tv_begin;
-	gettimeofday(&tv_begin, NULL);
+    gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         testcase(connfd, "SET Student GuLu", "OK\r\n", "SET-Student-GuLu");
         testcase(connfd, "GET Student", "GuLu\r\n", "GET-Student");
@@ -105,15 +113,15 @@ void array_testcase_1w(int connfd) {
     }
 
     struct timeval tv_end;
-	gettimeofday(&tv_end, NULL);
+    gettimeofday(&tv_end, NULL);
 
-	int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
 
-	printf("array testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
-
+    printf("array testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-void array_testcase_1w_0(int connfd) {
+void array_testcase_1w_0(int connfd)
+{
     int count = 10000;
     int i = 0;
 
@@ -121,14 +129,16 @@ void array_testcase_1w_0(int connfd) {
     gettimeofday(&tv_begin, NULL);
 
     // 插入阶段
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "SET Student%d GuLu%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "SET-Student-GuLu");
     }
 
     // 查询阶段
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "GET Student%d", i);
         char result[128] = {0};
@@ -137,14 +147,16 @@ void array_testcase_1w_0(int connfd) {
     }
 
     // 修改阶段
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "MOD Student%d Lighting%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "MOD-Student-Lighting");
     }
 
     // 再次查询阶段
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "GET Student%d", i);
         char result[128] = {0};
@@ -153,35 +165,40 @@ void array_testcase_1w_0(int connfd) {
     }
 
     // 存在性检查阶段
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "EXIST Student%d", i);
         testcase(connfd, cmd, "EXIST\r\n", "EXIST-Student");
     }
 
     // 删除阶段
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "DEL Student%d", i);
         testcase(connfd, cmd, "OK\r\n", "DEL-Student");
     }
 
     // 查询删除后的数据
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "GET Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "GET-Student");
     }
 
     // 修改不存在的数据
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "MOD Student%d Lian%d", i, i);
         testcase(connfd, cmd, "NO EXIST\r\n", "MOD-Student");
     }
 
     // 最终存在性检查（确认已删除）
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, sizeof(cmd), "EXIST Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "EXIST-Student");
@@ -195,8 +212,8 @@ void array_testcase_1w_0(int connfd) {
            time_used, 90000 * 1000 / time_used);
 }
 
-
-void rbtree_testcase(int connfd) {
+void rbtree_testcase(int connfd)
+{
 
     testcase(connfd, "RSET Student GuLu", "OK\r\n", "RSET-Student-GuLu");
     testcase(connfd, "RGET Student", "GuLu\r\n", "RGET-Student");
@@ -207,18 +224,19 @@ void rbtree_testcase(int connfd) {
     testcase(connfd, "RGET Student", "NO EXIST\r\n", "RGET-Student");
     testcase(connfd, "RMOD Student Lian", "NO EXIST\r\n", "RMOD-Student-Lian");
     testcase(connfd, "REXIST Student", "NO EXIST\r\n", "REXIST-Student");
-
 }
 
-void rbtree_testcase_1w(int connfd) {
+void rbtree_testcase_1w(int connfd)
+{
 
     int count = 10000;
     int i = 0;
 
     struct timeval tv_begin;
-	gettimeofday(&tv_begin, NULL);
+    gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         testcase(connfd, "RSET Student GuLu", "OK\r\n", "RSET-Student-GuLu");
         testcase(connfd, "RGET Student", "GuLu\r\n", "RGET-Student");
@@ -232,32 +250,32 @@ void rbtree_testcase_1w(int connfd) {
     }
 
     struct timeval tv_end;
-	gettimeofday(&tv_end, NULL);
+    gettimeofday(&tv_end, NULL);
 
-	int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
 
-	printf("rbtree testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
-
+    printf("rbtree testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-
-
-void rbtree_testcase_1w_0(int connfd) {
+void rbtree_testcase_1w_0(int connfd)
+{
 
     int count = 10000;
     int i = 0;
 
     struct timeval tv_begin;
-	gettimeofday(&tv_begin, NULL);
+    gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RSET Student%d GuLu%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "RSET-Student-GuLu");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RGET Student%d", i);
@@ -267,14 +285,16 @@ void rbtree_testcase_1w_0(int connfd) {
         testcase(connfd, cmd, result, "RGET-Student");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RMOD Student%d Lighting%d", i, i);
-        testcase(connfd, cmd, "OK\r\n",  "RMOD-Student-Lighting");
+        testcase(connfd, cmd, "OK\r\n", "RMOD-Student-Lighting");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RGET Student%d", i);
@@ -284,35 +304,40 @@ void rbtree_testcase_1w_0(int connfd) {
         testcase(connfd, cmd, result, "RGET-Student");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "REXIST Student%d", i);
         testcase(connfd, cmd, "EXIST\r\n", "REXIST-Student");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RDEL Student%d", i);
         testcase(connfd, cmd, "OK\r\n", "RDEL-Student");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RGET Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "RGET-Student");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "RMOD Student%d Lian%d", i, i);
-        testcase(connfd, cmd, "NO EXIST\r\n",  "RMOD-Student-Lian");
+        testcase(connfd, cmd, "NO EXIST\r\n", "RMOD-Student-Lian");
     }
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++)
+    {
 
         char cmd[128] = {0};
         snprintf(cmd, 128, "REXIST Student%d", i);
@@ -320,16 +345,15 @@ void rbtree_testcase_1w_0(int connfd) {
     }
 
     struct timeval tv_end;
-	gettimeofday(&tv_end, NULL);
+    gettimeofday(&tv_end, NULL);
 
-	int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
+    int time_used = TIME_SUB_MS(tv_end, tv_begin); // ms
 
-	printf("rbtree testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
-
+    printf("rbtree testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-
-void hash_testcase(int connfd) {
+void hash_testcase(int connfd)
+{
 
     testcase(connfd, "HSET Student GuLu", "OK\r\n", "HSET-Student-GuLu");
     testcase(connfd, "HGET Student", "GuLu\r\n", "HGET-Student");
@@ -340,10 +364,10 @@ void hash_testcase(int connfd) {
     testcase(connfd, "HGET Student", "NO EXIST\r\n", "HGET-Student");
     testcase(connfd, "HMOD Student Lian", "NO EXIST\r\n", "HMOD-Student-Lian");
     testcase(connfd, "HEXIST Student", "NO EXIST\r\n", "HEXIST-Student");
-
 }
 
-void hash_testcase_1w(int connfd) {
+void hash_testcase_1w(int connfd)
+{
 
     int count = 10000;
     int i = 0;
@@ -351,7 +375,8 @@ void hash_testcase_1w(int connfd) {
     struct timeval tv_begin;
     gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         testcase(connfd, "HSET Student GuLu", "OK\r\n", "HSET-Student-GuLu");
         testcase(connfd, "HGET Student", "GuLu\r\n", "HGET-Student");
         testcase(connfd, "HMOD Student Lighting", "OK\r\n", "HMOD-Student-Lighting");
@@ -370,7 +395,8 @@ void hash_testcase_1w(int connfd) {
     printf("hash testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-void hash_testcase_1w_0(int connfd) {
+void hash_testcase_1w_0(int connfd)
+{
 
     int count = 10000;
     int i = 0;
@@ -378,13 +404,15 @@ void hash_testcase_1w_0(int connfd) {
     struct timeval tv_begin;
     gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HSET Student%d GuLu%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "HSET-Student-GuLu");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HGET Student%d", i);
 
@@ -393,13 +421,15 @@ void hash_testcase_1w_0(int connfd) {
         testcase(connfd, cmd, result, "HGET-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HMOD Student%d Lighting%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "HMOD-Student-Lighting");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HGET Student%d", i);
 
@@ -408,31 +438,36 @@ void hash_testcase_1w_0(int connfd) {
         testcase(connfd, cmd, result, "HGET-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HEXIST Student%d", i);
         testcase(connfd, cmd, "EXIST\r\n", "HEXIST-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HDEL Student%d", i);
         testcase(connfd, cmd, "OK\r\n", "HDEL-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HGET Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "HGET-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HMOD Student%d Lian%d", i, i);
         testcase(connfd, cmd, "NO EXIST\r\n", "HMOD-Student-Lian");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "HEXIST Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "HEXIST-Student");
@@ -445,7 +480,8 @@ void hash_testcase_1w_0(int connfd) {
     printf("hash testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-void skiplist_testcase(int connfd) {
+void skiplist_testcase(int connfd)
+{
     testcase(connfd, "SSET Student GuLu", "OK\r\n", "SSET-Student-GuLu");
     testcase(connfd, "SGET Student", "GuLu\r\n", "SGET-Student");
     testcase(connfd, "SMOD Student Lighting", "OK\r\n", "SMOD-Student-Lighting");
@@ -457,7 +493,8 @@ void skiplist_testcase(int connfd) {
     testcase(connfd, "SEXIST Student", "NO EXIST\r\n", "SEXIST-Student");
 }
 
-void skiplist_testcase_1w(int connfd) {
+void skiplist_testcase_1w(int connfd)
+{
 
     int count = 10000;
     int i = 0;
@@ -465,7 +502,8 @@ void skiplist_testcase_1w(int connfd) {
     struct timeval tv_begin;
     gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         testcase(connfd, "SSET Student GuLu", "OK\r\n", "SSET-Student-GuLu");
         testcase(connfd, "SGET Student", "GuLu\r\n", "SGET-Student");
         testcase(connfd, "SMOD Student Lighting", "OK\r\n", "SMOD-Student-Lighting");
@@ -484,7 +522,8 @@ void skiplist_testcase_1w(int connfd) {
     printf("skiplist testcase_1w --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-void skiplist_testcase_1w_0(int connfd) {
+void skiplist_testcase_1w_0(int connfd)
+{
 
     int count = 10000;
     int i = 0;
@@ -492,13 +531,15 @@ void skiplist_testcase_1w_0(int connfd) {
     struct timeval tv_begin;
     gettimeofday(&tv_begin, NULL);
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SSET Student%d GuLu%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "SSET-Student-GuLu");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SGET Student%d", i);
         char result[128] = {0};
@@ -506,13 +547,15 @@ void skiplist_testcase_1w_0(int connfd) {
         testcase(connfd, cmd, result, "SGET-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SMOD Student%d Lighting%d", i, i);
         testcase(connfd, cmd, "OK\r\n", "SMOD-Student-Lighting");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SGET Student%d", i);
         char result[128] = {0};
@@ -520,31 +563,36 @@ void skiplist_testcase_1w_0(int connfd) {
         testcase(connfd, cmd, result, "SGET-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SEXIST Student%d", i);
         testcase(connfd, cmd, "EXIST\r\n", "SEXIST-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SDEL Student%d", i);
         testcase(connfd, cmd, "OK\r\n", "SDEL-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SGET Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "SGET-Student");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SMOD Student%d Lian%d", i, i);
         testcase(connfd, cmd, "NO EXIST\r\n", "SMOD-Student-Lian");
     }
 
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         char cmd[128] = {0};
         snprintf(cmd, 128, "SEXIST Student%d", i);
         testcase(connfd, cmd, "NO EXIST\r\n", "SEXIST-Student");
@@ -557,21 +605,21 @@ void skiplist_testcase_1w_0(int connfd) {
     printf("skiplist testcase_1w_0 --> time_used: %d, qps: %d\n", time_used, 90000 * 1000 / time_used);
 }
 
-
-
 // testcase 192.168.127.141 8000
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
-    if(argc != 3) {
+    if (argc != 3)
+    {
         printf("argc error\n");
         return -1;
     }
 
-    //getopt(argc, argv)
+    // getopt(argc, argv)
 
     char *ip = argv[1];
     int port = atoi(argv[2]);
-    //int mode = atoi(argv[3]);
+    // int mode = atoi(argv[3]);
 
     int connfd = connect_tcpserver(ip, port);
 
@@ -589,7 +637,6 @@ int main(int argc, char *argv[]) {
     //     hash_testcase(connfd);
     // }
 
-
     rbtree_testcase_1w(connfd);
     rbtree_testcase_1w_0(connfd);
     array_testcase_1w(connfd);
@@ -600,8 +647,6 @@ int main(int argc, char *argv[]) {
     hash_testcase(connfd);
     skiplist_testcase(connfd);
     skiplist_testcase_1w_0(connfd);
-
-    
 
     return 0;
 }
