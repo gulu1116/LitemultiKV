@@ -57,7 +57,7 @@ hashnode_t *_create_node(char *key, char *value)
 	if (kvalue == NULL)
 	{
 		kvs_free(kcopy);
-		kvs_free(kvalue);
+		kvs_free(node);
 		return NULL; // 内存分配失败
 	}
 	memset(kvalue, 0, strlen(value) + 1);
@@ -82,7 +82,7 @@ int kvs_hash_create(kvs_hash_t *hash)
 	if (!hash)
 		return -1;
 
-	hash->nodes = (hashnode_t **)kvs_malloc(sizeof(hashnode_t *) * MAX_TABLE_SIZE);
+	hash->nodes = (hashnode_t **)kvs_calloc(MAX_TABLE_SIZE, sizeof(hashnode_t *));
 	if (!hash->nodes)
 		return -1;
 
