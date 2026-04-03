@@ -702,6 +702,18 @@ int kvs_vector_dim(kvs_vector_t *vec)
     return vec->index->dim;
 }
 
+const char *kvs_vector_get_key_by_id(kvs_vector_t *vec, int id)
+{
+    if (!vec || !vec->index)
+        return NULL;
+    if (id < 0 || id >= vec->index->size)
+        return NULL;
+    HNSWNode *node = vec->index->nodes[id];
+    if (!node || node->is_deleted)
+        return NULL;
+    return node->key;
+}
+
 kvs_vector_t global_vector;
 
 #endif /* ENABLE_VECTOR */
