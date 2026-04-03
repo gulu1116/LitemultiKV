@@ -2,8 +2,6 @@
 
 Lightweight multi-engine KV store | Multi-engine · Vector Search · Smart Cache · Multi-tenant
 
-> **PS**: Work in progress, some features are under development.
-
 ---
 
 ## 目录
