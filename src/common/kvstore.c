@@ -822,6 +822,8 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 
 	case KVS_CMD_BGSAVE:
 	{
+		/* Reap any previously finished background save processes */
+		waitpid(-1, NULL, WNOHANG);
 		pid_t pid = fork();
 		if (pid == 0)
 		{

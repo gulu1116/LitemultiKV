@@ -136,6 +136,17 @@ static HNSWNode *hnsw_create_node(int id, const float *vector, int dim, int leve
     node->distances = (int *)kvs_malloc((level + 1) * sizeof(int));
     node->neighbors_count = (int *)kvs_malloc((level + 1) * sizeof(int));
 
+    if (!node->forward || !node->distances || !node->neighbors_count)
+    {
+        kvs_free(node->forward);
+        kvs_free(node->distances);
+        kvs_free(node->neighbors_count);
+        kvs_free(node->vector);
+        kvs_free(node->key);
+        kvs_free(node);
+        return NULL;
+    }
+
     for (int i = 0; i <= level; i++)
     {
         node->forward[i] = NULL;
@@ -302,7 +313,7 @@ static int search_hnsw(HNSWIndex *index, const float *query,
         if (curr && index->nodes[i] == curr)
             continue;
 
-        float dist = euclidean_distance(query, index->nodes[i]->vector, index->dim);
+        float dist = euclidean_distance(query, index->nodes[i]->vector, index->nodes[i]->dim);
         winners[n_winners] = index->nodes[i];
         d_winners[n_winners] = dist;
         n_winners++;
@@ -346,12 +357,12 @@ static int search_hnsw(HNSWIndex *index, const float *query,
 
 /* ====================== 插入算法 ====================== */
 
-static void insert_hnsw(HNSWIndex *index, HNSWNode *new_node)
+static int insert_hnsw(HNSWIndex *index, HNSWNode *new_node)
 {
     if (index->size >= index->max_size)
     {
         /* 简单的容量满判断，实际需要扩容逻辑 */
-        return;
+        return -1;
     }
 
     int id = index->size;
@@ -363,7 +374,7 @@ static void insert_hnsw(HNSWIndex *index, HNSWNode *new_node)
     {
         index->enterpoint_id = 0;
         index->max_level = new_node->level;
-        return;
+        return 0;
     }
 
     /* 更新全局最大层 */
@@ -431,6 +442,8 @@ static void insert_hnsw(HNSWIndex *index, HNSWNode *new_node)
             new_node->neighbors_count[level] = M_MAX;
         }
     }
+
+    return 0;
 }
 
 /* ====================== API 实现 ====================== */
@@ -533,7 +546,25 @@ int kvs_vector_set(kvs_vector_t *vec, char *key, char *value)
     if (!node)
         return -1;
 
-    insert_hnsw(vec->index, node);
+    /* Check for duplicate key — mark old node as deleted */
+    for (int i = 0; i < vec->index->size; i++)
+    {
+        HNSWNode *existing = vec->index->nodes[i];
+        if (existing && !existing->is_deleted && existing->key && strcmp(existing->key, key) == 0)
+        {
+            existing->is_deleted = 1;
+            existing->delete_time = (unsigned long)time(NULL);
+            vec->index->deleted_count++;
+            vec->count--;
+            break;
+        }
+    }
+
+    if (insert_hnsw(vec->index, node) < 0)
+    {
+        hnsw_free_node(node);
+        return -1;
+    }
     vec->count++;
 
     return 0; /* 成功 */
@@ -577,8 +608,20 @@ int kvs_vector_search(kvs_vector_t *vec, char *key, int k,
     if (vec->index->size == 0)
         return 0;
 
-    /* 解析查询向量 */
-    int dim = vec->index->dim;
+    /* 解析查询向量: use dimension from first matching node, not global MAX_DIM */
+    int dim = 0;
+    for (int idx = 0; idx < vec->index->size; idx++)
+    {
+        HNSWNode *n = vec->index->nodes[idx];
+        if (n && !n->is_deleted)
+        {
+            dim = n->dim;
+            break;
+        }
+    }
+    if (dim <= 0)
+        return 0;
+
     float *query = (float *)kvs_malloc(dim * sizeof(float));
     if (!query)
         return -1;

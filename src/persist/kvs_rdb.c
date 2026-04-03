@@ -35,7 +35,9 @@ static int rdb_write_string(int fd, const char *str)
     int len = strlen(str);
     if (rdb_write_int(fd, len) < 0)
         return -1;
-    return write(fd, str, len);
+    if (write(fd, str, len) != len)
+        return -1;
+    return 0;
 }
 
 static int rdb_read_string(int fd, char **str)
@@ -70,8 +72,10 @@ static int rdb_save_header(int fd)
     long long timestamp = (long long)time(NULL);
     int high = htonl((int)(timestamp >> 32));
     int low = htonl((int)(timestamp & 0xFFFFFFFF));
-    write(fd, &high, sizeof(int));
-    write(fd, &low, sizeof(int));
+    if (write(fd, &high, sizeof(int)) != sizeof(int))
+        return -1;
+    if (write(fd, &low, sizeof(int)) != sizeof(int))
+        return -1;
     
     return 0;
 }
@@ -107,10 +111,14 @@ extern kvs_skip_t global_skip;
 
 int rdb_save(const char *filename)
 {
-    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    /* Write to a temp file first, then rename for atomic save */
+    char tmpfile[256];
+    snprintf(tmpfile, sizeof(tmpfile), "%s.tmp", filename);
+    
+    int fd = open(tmpfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0)
     {
-        printf("RDB: Failed to open file %s: %s\n", filename, strerror(errno));
+        printf("RDB: Failed to open file %s: %s\n", tmpfile, strerror(errno));
         return -1;
     }
     
@@ -123,29 +131,38 @@ int rdb_save(const char *filename)
     }
     
     int count = 0;
+    int write_err = 0;
     
 #if ENABLE_ARRAY
-    for (int i = 0; i < global_array.idx; i++)
+    for (int i = 0; i < global_array.idx && !write_err; i++)
     {
         if (global_array.table[i].key && global_array.table[i].value)
         {
-            rdb_write_int(fd, ENGINE_ARRAY);
-            rdb_write_string(fd, global_array.table[i].key);
-            rdb_write_string(fd, global_array.table[i].value);
+            if (rdb_write_int(fd, ENGINE_ARRAY) < 0 ||
+                rdb_write_string(fd, global_array.table[i].key) < 0 ||
+                rdb_write_string(fd, global_array.table[i].value) < 0)
+            {
+                write_err = 1;
+                break;
+            }
             count++;
         }
     }
 #endif
     
 #if ENABLE_HASH
-    for (int i = 0; i < global_hash.max_slots; i++)
+    for (int i = 0; i < global_hash.max_slots && !write_err; i++)
     {
         hashnode_t *node = global_hash.nodes[i];
-        while (node)
+        while (node && !write_err)
         {
-            rdb_write_int(fd, ENGINE_HASH);
-            rdb_write_string(fd, node->key);
-            rdb_write_string(fd, node->value);
+            if (rdb_write_int(fd, ENGINE_HASH) < 0 ||
+                rdb_write_string(fd, node->key) < 0 ||
+                rdb_write_string(fd, node->value) < 0)
+            {
+                write_err = 1;
+                break;
+            }
             node = node->next;
             count++;
         }
@@ -154,24 +171,54 @@ int rdb_save(const char *filename)
     
 #if ENABLE_RBTREE
     int save_rbtree_node(int fd, rbtree_node *node, rbtree_node *nil);
-    count += save_rbtree_node(fd, global_rbtree.root, global_rbtree.nil);
+    if (!write_err)
+    {
+        int rbt_count = save_rbtree_node(fd, global_rbtree.root, global_rbtree.nil);
+        if (rbt_count < 0)
+            write_err = 1;
+        else
+            count += rbt_count;
+    }
 #endif
     
 #if ENABLE_SKIP
-    Node *x = global_skip.header;
-    while (x->forward[0] != NULL)
+    if (!write_err)
     {
-        x = x->forward[0];
-        rdb_write_int(fd, ENGINE_SKIPLIST);
-        rdb_write_string(fd, x->key);
-        rdb_write_string(fd, x->value);
-        count++;
+        Node *x = global_skip.header;
+        while (x->forward[0] != NULL && !write_err)
+        {
+            x = x->forward[0];
+            if (rdb_write_int(fd, ENGINE_SKIPLIST) < 0 ||
+                rdb_write_string(fd, x->key) < 0 ||
+                rdb_write_string(fd, x->value) < 0)
+            {
+                write_err = 1;
+                break;
+            }
+            count++;
+        }
     }
 #endif
+    
+    if (write_err)
+    {
+        close(fd);
+        printf("RDB: Write error during save\n");
+        return -1;
+    }
     
     rdb_write_int(fd, -1);
     
     close(fd);
+    
+    /* Atomic rename: replace old file only after successful write */
+    if (rename(tmpfile, filename) < 0)
+    {
+        printf("RDB: Failed to rename %s to %s: %s\n", tmpfile, filename, strerror(errno));
+        unlink(tmpfile);
+        return -1;
+    }
+    
     printf("RDB: Saved %d keys to %s\n", count, filename);
     return count;
 }
@@ -183,17 +230,24 @@ int save_rbtree_node(int fd, rbtree_node *node, rbtree_node *nil)
         return 0;
     
     int count = 0;
-    count += save_rbtree_node(fd, node->left, nil);
+    int left_count = save_rbtree_node(fd, node->left, nil);
+    if (left_count < 0)
+        return -1;
+    count += left_count;
     
     if (node->key)
     {
-        rdb_write_int(fd, ENGINE_RBTREE);
-        rdb_write_string(fd, node->key);
-        rdb_write_string(fd, (char *)node->value);
+        if (rdb_write_int(fd, ENGINE_RBTREE) < 0 ||
+            rdb_write_string(fd, node->key) < 0 ||
+            rdb_write_string(fd, (char *)node->value) < 0)
+            return -1;
         count++;
     }
     
-    count += save_rbtree_node(fd, node->right, nil);
+    int right_count = save_rbtree_node(fd, node->right, nil);
+    if (right_count < 0)
+        return -1;
+    count += right_count;
     return count;
 }
 #endif
@@ -238,33 +292,42 @@ int rdb_load(const char *filename)
             break;
         }
         
+        int loaded = 0;
         switch (engine)
         {
 #if ENABLE_ARRAY
         case ENGINE_ARRAY:
             kvs_array_set(&global_array, key, value);
+            loaded = 1;
             break;
 #endif
 #if ENABLE_HASH
         case ENGINE_HASH:
             kvs_hash_set(&global_hash, key, value);
+            loaded = 1;
             break;
 #endif
 #if ENABLE_RBTREE
         case ENGINE_RBTREE:
             kvs_rbtree_set(&global_rbtree, key, value);
+            loaded = 1;
             break;
 #endif
 #if ENABLE_SKIP
         case ENGINE_SKIPLIST:
             kvs_skip_set(&global_skip, key, value);
+            loaded = 1;
             break;
 #endif
+        default:
+            printf("RDB: Unknown engine type %d, skipping key '%s'\n", engine, key);
+            break;
         }
         
         kvs_free(key);
         kvs_free(value);
-        count++;
+        if (loaded)
+            count++;
     }
     
     close(fd);
