@@ -199,6 +199,7 @@ int kvs_vector_search(kvs_vector_t *vec, char *key, int k, char *query_str, int 
 int kvs_vector_del(kvs_vector_t *vec, char *key);
 int kvs_vector_exist(kvs_vector_t *vec, char *key);
 int kvs_vector_count(kvs_vector_t *vec);
+const char *kvs_vector_get_key_by_id(kvs_vector_t *vec, int id);
 
 #endif /* ENABLE_VECTOR */
 

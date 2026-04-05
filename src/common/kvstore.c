@@ -3,6 +3,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#define RESPONSE_MAX_LEN 1024
+
 #if ENABLE_ARRAY
 extern kvs_array_t global_array;
 #endif
@@ -155,6 +157,24 @@ const char *response[] = {
 
 };
 
+/* Helper: join tokens[start..count-1] into dst with spaces */
+static char *join_tokens(char **tokens, int start, int count, char *dst, int dst_size)
+{
+	int offset = 0;
+	for (int i = start; i < count && offset < dst_size - 1; i++)
+	{
+		if (i > start && offset < dst_size - 1)
+			dst[offset++] = ' ';
+		int tlen = strlen(tokens[i]);
+		if (offset + tlen >= dst_size)
+			tlen = dst_size - offset - 1;
+		memcpy(dst + offset, tokens[i], tlen);
+		offset += tlen;
+	}
+	dst[offset] = '\0';
+	return dst;
+}
+
 int kvs_split_token(char *msg, char *tokens[])
 {
 
@@ -162,14 +182,38 @@ int kvs_split_token(char *msg, char *tokens[])
 		return -1;
 
 	int idx = 0;
-	char *token = strtok(msg, " "); // 空格分割字符串
+	char *p = msg;
 
-	while (token != NULL)
+	while (*p)
 	{
-		// printf("idx: %d, token: %s\n", idx, token);
+		/* skip spaces */
+		while (*p == ' ')
+			p++;
+		if (*p == '\0')
+			break;
 
-		tokens[idx++] = token;
-		token = strtok(NULL, " ");
+		if (*p == '"')
+		{
+			/* quoted string - find closing quote */
+			p++; /* skip opening quote */
+			tokens[idx++] = p;
+			while (*p && *p != '"')
+				p++;
+			if (*p == '"')
+				*p++ = '\0';
+		}
+		else
+		{
+			/* unquoted token - find next space */
+			tokens[idx++] = p;
+			while (*p && *p != ' ')
+				p++;
+			if (*p == ' ')
+				*p++ = '\0';
+		}
+
+		if (idx >= KVS_MAX_TOKENS)
+			break;
 	}
 
 	return idx;
@@ -209,6 +253,29 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 	int ret = 0;
 	char *key = tokens[1];
 	char *value = tokens[2];
+
+	/* For SET/MOD commands, join all remaining tokens as the value */
+	static char joined_value[8192];
+	if (count > 3 &&
+		(cmd == KVS_CMD_SET || cmd == KVS_CMD_MOD ||
+		 cmd == KVS_CMD_HSET || cmd == KVS_CMD_HMOD ||
+		 cmd == KVS_CMD_RSET || cmd == KVS_CMD_RMOD ||
+		 cmd == KVS_CMD_SSET || cmd == KVS_CMD_SMOD))
+	{
+		join_tokens(tokens, 2, count, joined_value, sizeof(joined_value));
+		value = joined_value;
+	}
+
+	/* Validate that SET/MOD commands have a value */
+	if ((cmd == KVS_CMD_SET || cmd == KVS_CMD_MOD ||
+		 cmd == KVS_CMD_HSET || cmd == KVS_CMD_HMOD ||
+		 cmd == KVS_CMD_RSET || cmd == KVS_CMD_RMOD ||
+		 cmd == KVS_CMD_SSET || cmd == KVS_CMD_SMOD) &&
+		(count < 3 || value == NULL))
+	{
+		return sprintf(response, "ERROR: command requires key and value\r\n");
+	}
+
 	char namespaced_key[256] = {0};
 	char *actual_key = key;
 
@@ -244,7 +311,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 		if (cached)
 		{
 			/* 缓存命中 */
-			length = sprintf(response, "%s\r\n", (char *)cached);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", (char *)cached);
 			break;
 		}
 #endif
@@ -261,7 +328,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 			/* 加入缓存 */
 			kvs_cache_lru_add(actual_key, result, strlen(result) + 1);
 #endif
-			length = sprintf(response, "%s\r\n", result);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", result);
 		}
 		break;
 	}
@@ -350,7 +417,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 		void *cached = kvs_cache_get(actual_key, &cache_len);
 		if (cached)
 		{
-			length = sprintf(response, "%s\r\n", (char *)cached);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", (char *)cached);
 			break;
 		}
 #endif
@@ -365,7 +432,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 #if ENABLE_CACHE
 			kvs_cache_lru_add(actual_key, result, strlen(result) + 1);
 #endif
-			length = sprintf(response, "%s\r\n", result);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", result);
 		}
 		break;
 	}
@@ -452,7 +519,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 		void *cached = kvs_cache_get(actual_key, &cache_len);
 		if (cached)
 		{
-			length = sprintf(response, "%s\r\n", (char *)cached);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", (char *)cached);
 			break;
 		}
 #endif
@@ -467,7 +534,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 #if ENABLE_CACHE
 			kvs_cache_lru_add(actual_key, result, strlen(result) + 1);
 #endif
-			length = sprintf(response, "%s\r\n", result);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", result);
 		}
 		break;
 	}
@@ -554,7 +621,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 		void *cached = kvs_cache_get(actual_key, &cache_len);
 		if (cached)
 		{
-			length = sprintf(response, "%s\r\n", (char *)cached);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", (char *)cached);
 			break;
 		}
 #endif
@@ -569,7 +636,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 #if ENABLE_CACHE
 			kvs_cache_lru_add(actual_key, result, strlen(result) + 1);
 #endif
-			length = sprintf(response, "%s\r\n", result);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", result);
 		}
 		break;
 	}
@@ -671,7 +738,7 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 		}
 		else
 		{
-			length = sprintf(response, "%s\r\n", result);
+			length = snprintf(response, RESPONSE_MAX_LEN, "%s\r\n", result);
 		}
 		break;
 	}
@@ -703,11 +770,13 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 			}
 			else
 			{
-				length = sprintf(response, "RESULT\r\n");
-				for (int i = 0; i < n; i++)
-				{
-					length += sprintf(response + length, "%d %.4f\r\n", result_ids[i], result_dists[i]);
-				}
+					length = snprintf(response, RESPONSE_MAX_LEN, "RESULT\r\n");
+					for (int i = 0; i < n; i++)
+					{
+						const char *rkey = kvs_vector_get_key_by_id(&global_vector, result_ids[i]);
+						length += snprintf(response + length, RESPONSE_MAX_LEN - length,
+							"%s %.4f\r\n", rkey ? rkey : "(unknown)", result_dists[i]);
+					}
 			}
 		}
 		else
@@ -799,6 +868,13 @@ int kvs_filter_protocol(char **tokens, int count, char *response, char *namespac
 			strcpy(namespace, "default");
 			length = sprintf(response, "Namespace reset to: default\r\n");
 		}
+		else if (count == 2)
+		{
+			/* Shorthand: NAMESPACE <name> */
+			strncpy(namespace, tokens[1], 63);
+			namespace[63] = '\0';
+			length = sprintf(response, "Namespace set to: %s\r\n", namespace);
+		}
 		else
 		{
 			length = sprintf(response, "Current namespace: %s\r\n", namespace ? namespace : "default");
@@ -875,17 +951,20 @@ int kvs_protocol(char *msg, int length, char *response, char *namespace)
 	// Fix: strip \r from \r\n so strtok sees clean spaces
 	for (int i = 0; i < length; i++)
 	{
-		if (msg[i] == '\r')
-			msg[i] = ' ';
+			if (msg[i] == '\r' || msg[i] == '\n')
+				msg[i] = ' ';
 	}
 
 	char *tokens[KVS_MAX_TOKENS] = {0};
 
 	int count = kvs_split_token(msg, tokens);
-	if (count == -1)
-		return -1;
+	if (count <= 0)
+		return sprintf(response, "Unknown command\r\n");
 
-	return kvs_filter_protocol(tokens, count, response, namespace);
+	int result = kvs_filter_protocol(tokens, count, response, namespace);
+	if (result < 0)
+		return sprintf(response, "ERROR\r\n");
+	return result;
 }
 
 int init_kvengine(void)

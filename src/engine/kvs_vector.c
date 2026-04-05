@@ -286,8 +286,8 @@ static int search_hnsw(HNSWIndex *index, const float *query,
                     curr = prev;
                     break;
                 }
-                float dist = euclidean_distance(query, curr->vector, index->dim);
-                if (dist < best_dist)
+                        float dist = euclidean_distance(query, curr->vector, curr->dim);
+                        if (dist < best_dist)
                 {
                     best_dist = dist;
                 }
@@ -324,7 +324,7 @@ static int search_hnsw(HNSWIndex *index, const float *query,
         if (n_winners < EF_SEARCH)
         {
             winners[n_winners] = curr;
-            d_winners[n_winners] = euclidean_distance(query, curr->vector, index->dim);
+            d_winners[n_winners] = euclidean_distance(query, curr->vector, curr->dim);
             n_winners++;
         }
     }
@@ -546,8 +546,14 @@ int kvs_vector_set(kvs_vector_t *vec, char *key, char *value)
     if (!node)
         return -1;
 
-    /* Check for duplicate key — mark old node as deleted */
-    for (int i = 0; i < vec->index->size; i++)
+    if (insert_hnsw(vec->index, node) < 0)
+    {
+        hnsw_free_node(node);
+        return -1;
+    }
+
+    /* Mark old duplicate key as deleted AFTER successful insert */
+    for (int i = 0; i < vec->index->size - 1; i++)
     {
         HNSWNode *existing = vec->index->nodes[i];
         if (existing && !existing->is_deleted && existing->key && strcmp(existing->key, key) == 0)
@@ -558,12 +564,6 @@ int kvs_vector_set(kvs_vector_t *vec, char *key, char *value)
             vec->count--;
             break;
         }
-    }
-
-    if (insert_hnsw(vec->index, node) < 0)
-    {
-        hnsw_free_node(node);
-        return -1;
     }
     vec->count++;
 
@@ -700,6 +700,18 @@ int kvs_vector_dim(kvs_vector_t *vec)
     if (!vec || !vec->index)
         return 0;
     return vec->index->dim;
+}
+
+const char *kvs_vector_get_key_by_id(kvs_vector_t *vec, int id)
+{
+    if (!vec || !vec->index)
+        return NULL;
+    if (id < 0 || id >= vec->index->size)
+        return NULL;
+    HNSWNode *node = vec->index->nodes[id];
+    if (!node || node->is_deleted)
+        return NULL;
+    return node->key;
 }
 
 kvs_vector_t global_vector;

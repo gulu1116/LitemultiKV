@@ -127,6 +127,7 @@ int rdb_save(const char *filename)
     if (rdb_save_header(fd) < 0)
     {
         close(fd);
+        unlink(tmpfile);
         return -1;
     }
     
@@ -203,6 +204,7 @@ int rdb_save(const char *filename)
     if (write_err)
     {
         close(fd);
+        unlink(tmpfile);
         printf("RDB: Write error during save\n");
         return -1;
     }
