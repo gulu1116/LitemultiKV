@@ -340,7 +340,7 @@ LASTSAVE
 
 ## 七、性能测试
 
-### 运行测试套件
+### 功能测试
 
 ```bash
 # 启动服务器
@@ -350,7 +350,7 @@ LASTSAVE
 python3 tests/test_comprehensive.py
 ```
 
-### 测试覆盖
+### 功能测试覆盖
 
 | 测试类型 | 测试项 |
 |----------|--------|
@@ -361,15 +361,42 @@ python3 tests/test_comprehensive.py
 | 持久化 | SAVE/BGSAVE/dump.rdb |
 | 边界条件 | 空命令、不存在的键、长键值 |
 | 并发测试 | 多线程并发操作 |
-| 性能基准 | SET/GET/DEL QPS |
 
-### 性能指标
+### 性能基准测试
 
-| 操作 | QPS |
-|------|-----|
-| SET | ~50,000 |
-| GET | ~75,000 |
-| DEL | ~85,000 |
+项目提供标准化的性能基准测试工具（`perf/`），采集 QPS、延迟、CPU 占用、内存等核心指标。
+
+```bash
+# 一键运行全引擎基准测试（自动编译 + 启停服务）
+cd perf/
+./run_benchmark.sh
+
+# Reactor vs Proactor 网络框架对比
+./run_benchmark.sh --network all
+
+# 自定义参数
+./run_benchmark.sh --engine hash --count 50000
+```
+
+#### 引擎性能对比 (Reactor, 10K ops/操作)
+
+| 引擎 | 总 QPS | SET QPS | GET QPS | CPU% | RSS |
+|------|--------|---------|---------|------|-----|
+| Array | 27,044 | 22,170 | 26,444 | 80.9% | 4.1 MB |
+| RBTree | 77,881 | 89,933 | 66,763 | 57.2% | 4.7 MB |
+| Hash | 65,129 | 65,111 | 52,293 | 59.6% | 4.7 MB |
+| SkipList | 71,705 | 86,496 | 57,213 | 61.3% | 4.7 MB |
+
+#### 网络框架对比
+
+| 引擎 | Reactor QPS | Proactor QPS |
+|------|-------------|--------------|
+| Array | 26,556 | 32,258 |
+| RBTree | 76,324 | 82,074 |
+| Hash | 67,980 | 69,686 |
+| SkipList | 69,003 | 73,046 |
+
+详见 [`perf/README.md`](perf/README.md)。
 
 ### C 语言性能测试工具
 
@@ -473,6 +500,7 @@ LitemultiKV-main/
 ├── NtyCo/                   # 协程库
 ├── kvs-client/              # 多语言客户端示例
 ├── docs/                    # 设计文档
+├── perf/                    # 性能采集，详见 [perf/README.md]
 └── Makefile
 ```
 

@@ -1,0 +1,465 @@
+{
+  "timestamp": "20260405_162513",
+  "results": {
+    "reactor": {
+      "array": {
+        "engine": "array",
+        "network": "reactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 1882.8,
+        "overall_qps": 26556,
+        "cpu_pct": 81.1,
+        "mem_rss_kb": 4176,
+        "mem_rss_mb": 4.1,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 448.9,
+            "qps": 22276,
+            "avg_latency_us": 44.1,
+            "p50_latency_us": 40.2,
+            "p99_latency_us": 135.5
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 393.5,
+            "qps": 25412,
+            "avg_latency_us": 38.8,
+            "p50_latency_us": 37.0,
+            "p99_latency_us": 122.5
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 446.7,
+            "qps": 22388,
+            "avg_latency_us": 43.9,
+            "p50_latency_us": 41.9,
+            "p99_latency_us": 115.1
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 373.2,
+            "qps": 26796,
+            "avg_latency_us": 36.7,
+            "p50_latency_us": 33.9,
+            "p99_latency_us": 126.6
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 220.5,
+            "qps": 45356,
+            "avg_latency_us": 21.5,
+            "p50_latency_us": 19.4,
+            "p99_latency_us": 67.7
+          }
+        }
+      },
+      "rbtree": {
+        "engine": "rbtree",
+        "network": "reactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 655.1,
+        "overall_qps": 76324,
+        "cpu_pct": 59.1,
+        "mem_rss_kb": 4824,
+        "mem_rss_mb": 4.7,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 110.6,
+            "qps": 90415,
+            "avg_latency_us": 10.6,
+            "p50_latency_us": 9.2,
+            "p99_latency_us": 24.8
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 181.2,
+            "qps": 55193,
+            "avg_latency_us": 17.5,
+            "p50_latency_us": 13.8,
+            "p99_latency_us": 55.4
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 156.0,
+            "qps": 64089,
+            "avg_latency_us": 15.1,
+            "p50_latency_us": 12.8,
+            "p99_latency_us": 40.4
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 106.6,
+            "qps": 93834,
+            "avg_latency_us": 10.2,
+            "p50_latency_us": 8.9,
+            "p99_latency_us": 23.8
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 100.7,
+            "qps": 99289,
+            "avg_latency_us": 9.7,
+            "p50_latency_us": 8.8,
+            "p99_latency_us": 22.1
+          }
+        }
+      },
+      "hash": {
+        "engine": "hash",
+        "network": "reactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 735.5,
+        "overall_qps": 67980,
+        "cpu_pct": 62.2,
+        "mem_rss_kb": 4824,
+        "mem_rss_mb": 4.7,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 114.5,
+            "qps": 87370,
+            "avg_latency_us": 11.0,
+            "p50_latency_us": 10.4,
+            "p99_latency_us": 22.0
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 162.0,
+            "qps": 61726,
+            "avg_latency_us": 15.8,
+            "p50_latency_us": 14.8,
+            "p99_latency_us": 33.7
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 211.2,
+            "qps": 47341,
+            "avg_latency_us": 20.5,
+            "p50_latency_us": 16.4,
+            "p99_latency_us": 73.5
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 127.2,
+            "qps": 78641,
+            "avg_latency_us": 12.3,
+            "p50_latency_us": 10.3,
+            "p99_latency_us": 31.6
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 120.6,
+            "qps": 82930,
+            "avg_latency_us": 11.6,
+            "p50_latency_us": 10.6,
+            "p99_latency_us": 30.8
+          }
+        }
+      },
+      "skiplist": {
+        "engine": "skiplist",
+        "network": "reactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 724.6,
+        "overall_qps": 69003,
+        "cpu_pct": 60.4,
+        "mem_rss_kb": 4860,
+        "mem_rss_mb": 4.7,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 107.8,
+            "qps": 92729,
+            "avg_latency_us": 10.3,
+            "p50_latency_us": 9.9,
+            "p99_latency_us": 20.1
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 164.6,
+            "qps": 60768,
+            "avg_latency_us": 15.9,
+            "p50_latency_us": 14.6,
+            "p99_latency_us": 40.1
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 189.0,
+            "qps": 52915,
+            "avg_latency_us": 18.3,
+            "p50_latency_us": 14.5,
+            "p99_latency_us": 61.9
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 153.8,
+            "qps": 65009,
+            "avg_latency_us": 14.7,
+            "p50_latency_us": 10.7,
+            "p99_latency_us": 43.0
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 109.4,
+            "qps": 91427,
+            "avg_latency_us": 10.5,
+            "p50_latency_us": 8.9,
+            "p99_latency_us": 24.3
+          }
+        }
+      }
+    },
+    "proactor": {
+      "array": {
+        "engine": "array",
+        "network": "proactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 1550.0,
+        "overall_qps": 32258,
+        "cpu_pct": 81.7,
+        "mem_rss_kb": 4276,
+        "mem_rss_mb": 4.2,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 335.5,
+            "qps": 29807,
+            "avg_latency_us": 33.1,
+            "p50_latency_us": 32.9,
+            "p99_latency_us": 62.2
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 352.1,
+            "qps": 28402,
+            "avg_latency_us": 34.6,
+            "p50_latency_us": 32.5,
+            "p99_latency_us": 102.9
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 359.7,
+            "qps": 27800,
+            "avg_latency_us": 35.3,
+            "p50_latency_us": 33.8,
+            "p99_latency_us": 96.2
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 291.4,
+            "qps": 34317,
+            "avg_latency_us": 28.6,
+            "p50_latency_us": 27.0,
+            "p99_latency_us": 64.1
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 211.3,
+            "qps": 47328,
+            "avg_latency_us": 20.6,
+            "p50_latency_us": 19.0,
+            "p99_latency_us": 49.1
+          }
+        }
+      },
+      "rbtree": {
+        "engine": "rbtree",
+        "network": "proactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 609.2,
+        "overall_qps": 82074,
+        "cpu_pct": 57.0,
+        "mem_rss_kb": 4924,
+        "mem_rss_mb": 4.8,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 131.6,
+            "qps": 75991,
+            "avg_latency_us": 12.5,
+            "p50_latency_us": 9.2,
+            "p99_latency_us": 32.6
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 128.9,
+            "qps": 77562,
+            "avg_latency_us": 12.5,
+            "p50_latency_us": 12.1,
+            "p99_latency_us": 16.8
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 176.8,
+            "qps": 56564,
+            "avg_latency_us": 16.9,
+            "p50_latency_us": 12.4,
+            "p99_latency_us": 41.6
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 87.1,
+            "qps": 114794,
+            "avg_latency_us": 8.4,
+            "p50_latency_us": 8.2,
+            "p99_latency_us": 11.5
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 84.8,
+            "qps": 117941,
+            "avg_latency_us": 8.2,
+            "p50_latency_us": 8.0,
+            "p99_latency_us": 10.6
+          }
+        }
+      },
+      "hash": {
+        "engine": "hash",
+        "network": "proactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 717.5,
+        "overall_qps": 69686,
+        "cpu_pct": 63.7,
+        "mem_rss_kb": 4924,
+        "mem_rss_mb": 4.8,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 121.3,
+            "qps": 82430,
+            "avg_latency_us": 11.7,
+            "p50_latency_us": 10.0,
+            "p99_latency_us": 32.0
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 203.2,
+            "qps": 49213,
+            "avg_latency_us": 19.7,
+            "p50_latency_us": 15.6,
+            "p99_latency_us": 50.7
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 163.2,
+            "qps": 61255,
+            "avg_latency_us": 15.8,
+            "p50_latency_us": 14.7,
+            "p99_latency_us": 36.5
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 99.3,
+            "qps": 100736,
+            "avg_latency_us": 9.6,
+            "p50_latency_us": 9.2,
+            "p99_latency_us": 14.6
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 130.5,
+            "qps": 76621,
+            "avg_latency_us": 12.6,
+            "p50_latency_us": 10.3,
+            "p99_latency_us": 37.8
+          }
+        }
+      },
+      "skiplist": {
+        "engine": "skiplist",
+        "network": "proactor",
+        "total_ops": 50000,
+        "total_elapsed_ms": 684.5,
+        "overall_qps": 73046,
+        "cpu_pct": 58.0,
+        "mem_rss_kb": 4960,
+        "mem_rss_mb": 4.8,
+        "operations": {
+          "SET": {
+            "op": "SET",
+            "count": 10000,
+            "elapsed_ms": 150.9,
+            "qps": 66274,
+            "avg_latency_us": 14.3,
+            "p50_latency_us": 11.2,
+            "p99_latency_us": 37.8
+          },
+          "GET": {
+            "op": "GET",
+            "count": 10000,
+            "elapsed_ms": 166.9,
+            "qps": 59931,
+            "avg_latency_us": 16.1,
+            "p50_latency_us": 13.7,
+            "p99_latency_us": 44.3
+          },
+          "MOD": {
+            "op": "MOD",
+            "count": 10000,
+            "elapsed_ms": 165.0,
+            "qps": 60599,
+            "avg_latency_us": 15.9,
+            "p50_latency_us": 13.6,
+            "p99_latency_us": 36.3
+          },
+          "EXIST": {
+            "op": "EXIST",
+            "count": 10000,
+            "elapsed_ms": 101.4,
+            "qps": 98636,
+            "avg_latency_us": 9.8,
+            "p50_latency_us": 9.2,
+            "p99_latency_us": 20.4
+          },
+          "DEL": {
+            "op": "DEL",
+            "count": 10000,
+            "elapsed_ms": 100.3,
+            "qps": 99707,
+            "avg_latency_us": 9.6,
+            "p50_latency_us": 8.6,
+            "p99_latency_us": 21.2
+          }
+        }
+      }
+    }
+  }
+}
