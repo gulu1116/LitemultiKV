@@ -39,6 +39,8 @@ Lightweight multi-engine KV store | Multi-engine · Vector Search · Smart Cache
 - GCC 9.4.0+
 - Python 3.x（用于测试脚本）
 
+单机测试环境为 Intel i7-12700H（6P+8E，14 核 20 线程），38GB 内存，Linux x86_64 系统。
+
 ### 安装步骤
 
 ```bash
